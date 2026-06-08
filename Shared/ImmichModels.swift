@@ -43,18 +43,6 @@ struct AlbumSummary: Decodable, Sendable {
     }
 }
 
-struct Album: Decodable, Sendable {
-    let albumID: String
-    let albumName: String
-    let assets: [Asset]
-
-    enum CodingKeys: String, CodingKey {
-        case albumID = "id"
-        case albumName
-        case assets
-    }
-}
-
 struct SearchResponse: Decodable, Sendable {
     let assets: SearchAssets
 }
@@ -67,9 +55,13 @@ struct SearchAssets: Decodable, Sendable {
 struct MetadataSearchRequest: Encodable, Sendable {
     let takenAfter: String?
     let takenBefore: String?
+    let albumIds: [String]?
     let page: Int
     let size: Int
     let order: String
+    // Required for the server to include exifInfo (file size) in the results;
+    // without it documentSize is unavailable on enumerated items.
+    let withExif: Bool
 }
 
 // POST /api/assets returns the new id plus whether the server recognised the

@@ -31,7 +31,7 @@ actor ImmichCache {
     func assets(album albumID: String) async throws -> [Asset] {
         let client = self.client
         return try await cachedAssets(key: "album:\(albumID)") {
-            try await client.album(id: albumID).assets
+            try await client.searchAllAlbum(albumID: albumID)
         }
     }
 

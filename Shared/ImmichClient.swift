@@ -27,10 +27,6 @@ struct ImmichClient: Sendable {
     let apiKey: String
     private let session: URLSession = .shared
 
-    func album(id: String) async throws -> Album {
-        try await getJSON(path: "/api/albums/\(id)")
-    }
-
     func listAlbums() async throws -> [AlbumSummary] {
         try await getJSON(path: "/api/albums")
     }
@@ -109,15 +105,15 @@ struct ImmichClient: Sendable {
         _ = try await sendJSON(method: "DELETE", path: "/api/assets", body: TrashRequest(ids: assetIDs, force: false))
     }
 
-    func searchMetadata(takenAfter: String?, takenBefore: String?, page: Int, size: Int, order: String) async throws -> SearchPage {
-        let body = MetadataSearchRequest(takenAfter: takenAfter, takenBefore: takenBefore, page: page, size: size, order: order)
+    func searchMetadata(takenAfter: String? = nil, takenBefore: String? = nil, albumIds: [String]? = nil, page: Int, size: Int, order: String) async throws -> SearchPage {
+        let body = MetadataSearchRequest(takenAfter: takenAfter, takenBefore: takenBefore, albumIds: albumIds, page: page, size: size, order: order, withExif: true)
         let response: SearchResponse = try await postJSON(path: "/api/search/metadata", body: body)
         return SearchPage(assets: response.assets.items, nextPage: response.assets.nextPage)
     }
 
     func assetYearRange() async throws -> (oldest: Int, newest: Int)? {
-        async let oldestPage = searchMetadata(takenAfter: nil, takenBefore: nil, page: 1, size: 1, order: "asc")
-        async let newestPage = searchMetadata(takenAfter: nil, takenBefore: nil, page: 1, size: 1, order: "desc")
+        async let oldestPage = searchMetadata(page: 1, size: 1, order: "asc")
+        async let newestPage = searchMetadata(page: 1, size: 1, order: "desc")
         let (oldest, newest) = try await (oldestPage, newestPage)
         guard let oldestYear = oldest.assets.first.flatMap({ Int($0.fileCreatedAt.prefix(4)) }),
               let newestYear = newest.assets.first.flatMap({ Int($0.fileCreatedAt.prefix(4)) }) else {
@@ -126,16 +122,14 @@ struct ImmichClient: Sendable {
         return (oldestYear, newestYear)
     }
 
-    func searchMonth(yearMonth: String, page: Int) async throws -> SearchPage {
-        let bounds = ImmichClient.monthBounds(yearMonth)
-        return try await searchMetadata(takenAfter: bounds.after, takenBefore: bounds.before, page: page, size: 250, order: "asc")
-    }
-
-    func searchAllMonth(yearMonth: String) async throws -> [Asset] {
+    // Pages through /api/search/metadata until exhausted, gathering every asset
+    // matching the filter. Backs both the month (timeline) and album views, so
+    // album enumeration is bounded by page size instead of one unbounded fetch.
+    private func searchAll(albumIds: [String]? = nil, takenAfter: String? = nil, takenBefore: String? = nil) async throws -> [Asset] {
         var all: [Asset] = []
         var page = 1
         while true {
-            let result = try await searchMonth(yearMonth: yearMonth, page: page)
+            let result = try await searchMetadata(takenAfter: takenAfter, takenBefore: takenBefore, albumIds: albumIds, page: page, size: 250, order: "asc")
             all.append(contentsOf: result.assets)
             guard result.nextPage != nil else {
                 break
@@ -143,6 +137,15 @@ struct ImmichClient: Sendable {
             page += 1
         }
         return all
+    }
+
+    func searchAllMonth(yearMonth: String) async throws -> [Asset] {
+        let bounds = ImmichClient.monthBounds(yearMonth)
+        return try await searchAll(takenAfter: bounds.after, takenBefore: bounds.before)
+    }
+
+    func searchAllAlbum(albumID: String) async throws -> [Asset] {
+        try await searchAll(albumIds: [albumID])
     }
 
     func hasAssets(after: String, before: String) async throws -> Bool {
