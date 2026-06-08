@@ -64,18 +64,18 @@ final class ImmichItem: NSObject, NSFileProviderItem {
     var itemIdentifier: NSFileProviderItemIdentifier {
         switch location {
         case .album(let id):
-            return NSFileProviderItemIdentifier(rawValue: "asset:\(id):\(asset.assetID)")
+            return ItemID.asset(albumID: id, assetID: asset.assetID).identifier
         case .month(let yearMonth):
-            return NSFileProviderItemIdentifier(rawValue: "tasset:\(yearMonth):\(asset.assetID)")
+            return ItemID.timelineAsset(yearMonth: yearMonth, assetID: asset.assetID).identifier
         }
     }
 
     var parentItemIdentifier: NSFileProviderItemIdentifier {
         switch location {
         case .album(let id):
-            return NSFileProviderItemIdentifier(rawValue: "album:\(id)")
+            return ItemID.album(id).identifier
         case .month(let yearMonth):
-            return NSFileProviderItemIdentifier(rawValue: "month:\(yearMonth)")
+            return ItemID.month(yearMonth).identifier
         }
     }
 
@@ -187,11 +187,11 @@ final class AlbumItem: NSObject, NSFileProviderItem {
     }
 
     var itemIdentifier: NSFileProviderItemIdentifier {
-        NSFileProviderItemIdentifier(rawValue: "album:\(album.albumID)")
+        ItemID.album(album.albumID).identifier
     }
 
     var parentItemIdentifier: NSFileProviderItemIdentifier {
-        NSFileProviderItemIdentifier(rawValue: "section:albums")
+        ItemID.albumsSection.identifier
     }
 
     var filename: String { displayName }
@@ -221,11 +221,11 @@ final class YearItem: NSObject, NSFileProviderItem {
     }
 
     var itemIdentifier: NSFileProviderItemIdentifier {
-        NSFileProviderItemIdentifier(rawValue: "year:\(year)")
+        ItemID.year(year).identifier
     }
 
     var parentItemIdentifier: NSFileProviderItemIdentifier {
-        NSFileProviderItemIdentifier(rawValue: "section:timeline")
+        ItemID.timelineSection.identifier
     }
 
     var filename: String { year }
@@ -245,11 +245,11 @@ final class MonthItem: NSObject, NSFileProviderItem {
     }
 
     var itemIdentifier: NSFileProviderItemIdentifier {
-        NSFileProviderItemIdentifier(rawValue: "month:\(yearMonth)")
+        ItemID.month(yearMonth).identifier
     }
 
     var parentItemIdentifier: NSFileProviderItemIdentifier {
-        NSFileProviderItemIdentifier(rawValue: "year:\(String(yearMonth.prefix(4)))")
+        ItemID.year(String(yearMonth.prefix(4))).identifier
     }
 
     private static let monthNames: [String] = DateFormatter().standaloneMonthSymbols ?? []

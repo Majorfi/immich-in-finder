@@ -69,6 +69,32 @@ enum ItemID {
             return nil
         }
     }
+
+    // The inverse of init(_:). Keeping construction here, next to the parser,
+    // is what keeps the two halves of the identifier grammar from drifting —
+    // every item and signal builds its identifier through this, not by hand.
+    var identifier: NSFileProviderItemIdentifier {
+        switch self {
+        case .root:
+            return .rootContainer
+        case .albumsSection:
+            return NSFileProviderItemIdentifier(rawValue: "section:albums")
+        case .timelineSection:
+            return NSFileProviderItemIdentifier(rawValue: "section:timeline")
+        case .album(let id):
+            return NSFileProviderItemIdentifier(rawValue: "album:\(id)")
+        case .asset(let albumID, let assetID):
+            return NSFileProviderItemIdentifier(rawValue: "asset:\(albumID):\(assetID)")
+        case .year(let year):
+            return NSFileProviderItemIdentifier(rawValue: "year:\(year)")
+        case .month(let yearMonth):
+            return NSFileProviderItemIdentifier(rawValue: "month:\(yearMonth)")
+        case .timelineAsset(let yearMonth, let assetID):
+            return NSFileProviderItemIdentifier(rawValue: "tasset:\(yearMonth):\(assetID)")
+        case .other:
+            return NSFileProviderItemIdentifier(rawValue: "")
+        }
+    }
 }
 
 final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
@@ -144,9 +170,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                         progress.completedUnitCount = 1
                         return
                     }
-                    let counts = nameCounts(albums.map { $0.albumName })
-                    let filename = disambiguatedName(base: summary.albumName, id: summary.albumID, counts: counts)
-                    completionHandler(AlbumItem(album: summary, filename: filename), nil)
+                    completionHandler(Self.albumItem(for: summary, in: albums), nil)
                 } catch {
                     completionHandler(nil, error)
                 }
@@ -241,13 +265,11 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     let album = try await client.createAlbum(name: filename)
                     await cache.invalidateAlbumList()
                     fileProviderLog.log("created album \(album.albumID, privacy: .public)")
-                    // Disambiguate against the refreshed list so the returned name
+                    // Name it against the refreshed list so the returned filename
                     // matches what enumeration will report for the same album.
                     let albums = try await cache.albumList()
-                    let counts = nameCounts(albums.map { $0.albumName })
-                    let name = disambiguatedName(base: album.albumName, id: album.albumID, counts: counts)
-                    completionHandler(AlbumItem(album: album, filename: name), [], false, nil)
-                    Self.signalChange(domain: domain, container: NSFileProviderItemIdentifier(rawValue: "section:albums"))
+                    completionHandler(Self.albumItem(for: album, in: albums), [], false, nil)
+                    Self.signalChange(domain: domain, container: ItemID.albumsSection.identifier)
                 } catch {
                     fileProviderLog.error("createAlbum failed: \(error.localizedDescription, privacy: .public)")
                     completionHandler(nil, [], false, error)
@@ -281,7 +303,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     return
                 }
                 completionHandler(ImmichItem(asset: resolved.asset, location: .album(id: albumID), filename: resolved.filename), [], false, nil)
-                Self.signalChange(domain: domain, container: NSFileProviderItemIdentifier(rawValue: "album:\(albumID)"))
+                Self.signalChange(domain: domain, container: ItemID.album(albumID).identifier)
             } catch {
                 fileProviderLog.error("upload failed for \(filename, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 completionHandler(nil, [], false, error)
@@ -312,8 +334,9 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     let album = try await client.renameAlbum(id: albumID, name: newName)
                     await cache.invalidateAlbumList()
                     fileProviderLog.log("renamed album \(albumID, privacy: .public)")
-                    completionHandler(AlbumItem(album: album, filename: album.albumName), [], false, nil)
-                    Self.signalChange(domain: domain, container: NSFileProviderItemIdentifier(rawValue: "section:albums"))
+                    let albums = try await cache.albumList()
+                    completionHandler(Self.albumItem(for: album, in: albums), [], false, nil)
+                    Self.signalChange(domain: domain, container: ItemID.albumsSection.identifier)
                 } catch {
                     fileProviderLog.error("renameAlbum failed: \(error.localizedDescription, privacy: .public)")
                     completionHandler(nil, [], false, error)
@@ -345,8 +368,8 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     }
                     fileProviderLog.log("moved asset \(assetID, privacy: .public): \(srcAlbum, privacy: .public) -> \(destAlbum, privacy: .public)")
                     completionHandler(ImmichItem(asset: resolved.asset, location: .album(id: destAlbum), filename: resolved.filename), [], false, nil)
-                    Self.signalChange(domain: domain, container: NSFileProviderItemIdentifier(rawValue: "album:\(srcAlbum)"))
-                    Self.signalChange(domain: domain, container: NSFileProviderItemIdentifier(rawValue: "album:\(destAlbum)"))
+                    Self.signalChange(domain: domain, container: ItemID.album(srcAlbum).identifier)
+                    Self.signalChange(domain: domain, container: ItemID.album(destAlbum).identifier)
                 } catch {
                     fileProviderLog.error("move failed for \(assetID, privacy: .public): \(error.localizedDescription, privacy: .public)")
                     completionHandler(nil, [], false, error)
@@ -442,10 +465,19 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
     private static func containerIdentifier(for location: AssetLocation) -> NSFileProviderItemIdentifier {
         switch location {
         case .album(let id):
-            return NSFileProviderItemIdentifier(rawValue: "album:\(id)")
+            return ItemID.album(id).identifier
         case .month(let yearMonth):
-            return NSFileProviderItemIdentifier(rawValue: "month:\(yearMonth)")
+            return ItemID.month(yearMonth).identifier
         }
+    }
+
+    // Names an album folder the same way enumeration does, so the item returned
+    // by item(for:)/createItem/rename always matches what the Albums listing
+    // reports for the same identifier.
+    private static func albumItem(for album: AlbumSummary, in albums: [AlbumSummary]) -> AlbumItem {
+        let counts = nameCounts(albums.map { $0.albumName })
+        let filename = disambiguatedName(base: album.albumName, id: album.albumID, counts: counts)
+        return AlbumItem(album: album, filename: filename)
     }
 }
 
