@@ -35,10 +35,6 @@ struct ImmichClient: Sendable {
         try await getJSON(path: "/api/albums")
     }
 
-    func asset(id: String) async throws -> Asset {
-        try await getJSON(path: "/api/assets/\(id)")
-    }
-
     func downloadOriginal(assetID: String) async throws -> Data {
         try await getBytes(path: "/api/assets/\(assetID)/original")
     }
@@ -58,8 +54,9 @@ struct ImmichClient: Sendable {
     }
 
     func assetYearRange() async throws -> (oldest: Int, newest: Int)? {
-        let oldest = try await searchMetadata(takenAfter: nil, takenBefore: nil, page: 1, size: 1, order: "asc")
-        let newest = try await searchMetadata(takenAfter: nil, takenBefore: nil, page: 1, size: 1, order: "desc")
+        async let oldestPage = searchMetadata(takenAfter: nil, takenBefore: nil, page: 1, size: 1, order: "asc")
+        async let newestPage = searchMetadata(takenAfter: nil, takenBefore: nil, page: 1, size: 1, order: "desc")
+        let (oldest, newest) = try await (oldestPage, newestPage)
         guard let oldestYear = oldest.assets.first.flatMap({ Int($0.fileCreatedAt.prefix(4)) }),
               let newestYear = newest.assets.first.flatMap({ Int($0.fileCreatedAt.prefix(4)) }) else {
             return nil
@@ -72,48 +69,66 @@ struct ImmichClient: Sendable {
         return try await searchMetadata(takenAfter: bounds.after, takenBefore: bounds.before, page: page, size: 250, order: "asc")
     }
 
-    func monthHasAssets(_ yearMonth: String) async throws -> Bool {
-        let bounds = ImmichClient.monthBounds(yearMonth)
-        let page = try await searchMetadata(takenAfter: bounds.after, takenBefore: bounds.before, page: 1, size: 1, order: "asc")
+    func searchAllMonth(yearMonth: String) async throws -> [Asset] {
+        var all: [Asset] = []
+        var page = 1
+        while true {
+            let result = try await searchMonth(yearMonth: yearMonth, page: page)
+            all.append(contentsOf: result.assets)
+            guard result.nextPage != nil else {
+                break
+            }
+            page += 1
+        }
+        return all
+    }
+
+    func hasAssets(after: String, before: String) async throws -> Bool {
+        let page = try await searchMetadata(takenAfter: after, takenBefore: before, page: 1, size: 1, order: "asc")
         return page.assets.isEmpty == false
     }
 
-    func nonEmptyMonths(year: String) async throws -> [String] {
-        let candidates = (1...12).map { String(format: "%@-%02d", year, $0) }
-        return try await withThrowingTaskGroup(of: (String, Bool).self) { group in
-            for yearMonth in candidates {
-                group.addTask { (yearMonth, try await self.monthHasAssets(yearMonth)) }
-            }
-            var kept: [String] = []
-            for try await (yearMonth, hasAssets) in group {
-                if hasAssets {
-                    kept.append(yearMonth)
-                }
-            }
-            return kept.sorted()
-        }
+    func monthHasAssets(_ yearMonth: String) async throws -> Bool {
+        let bounds = ImmichClient.monthBounds(yearMonth)
+        return try await hasAssets(after: bounds.after, before: bounds.before)
     }
 
     func yearHasAssets(_ year: Int) async throws -> Bool {
         let after = String(format: "%04d-01-01T00:00:00.000Z", year)
         let before = String(format: "%04d-01-01T00:00:00.000Z", year + 1)
-        let page = try await searchMetadata(takenAfter: after, takenBefore: before, page: 1, size: 1, order: "asc")
-        return page.assets.isEmpty == false
+        return try await hasAssets(after: after, before: before)
     }
 
-    func nonEmptyYears(oldest: Int, newest: Int) async throws -> [Int] {
+    // A failing probe falls open (the candidate is kept) so one transient error
+    // never collapses the whole listing.
+    func nonEmptyMonths(year: String) async -> [String] {
+        let candidates = (1...12).map { String(format: "%@-%02d", year, $0) }
+        let kept = await ImmichClient.concurrentFilter(candidates) { yearMonth in
+            (try? await self.monthHasAssets(yearMonth)) ?? true
+        }
+        return kept.sorted()
+    }
+
+    func nonEmptyYears(oldest: Int, newest: Int) async -> [Int] {
         let candidates = Array(oldest...newest)
-        return try await withThrowingTaskGroup(of: (Int, Bool).self) { group in
-            for year in candidates {
-                group.addTask { (year, try await self.yearHasAssets(year)) }
+        let kept = await ImmichClient.concurrentFilter(candidates) { year in
+            (try? await self.yearHasAssets(year)) ?? true
+        }
+        return kept.sorted(by: >)
+    }
+
+    static func concurrentFilter<T: Sendable>(_ candidates: [T], keep: @Sendable @escaping (T) async -> Bool) async -> [T] {
+        await withTaskGroup(of: (T, Bool).self) { group in
+            for candidate in candidates {
+                group.addTask { (candidate, await keep(candidate)) }
             }
-            var kept: [Int] = []
-            for try await (year, hasAssets) in group {
-                if hasAssets {
-                    kept.append(year)
+            var kept: [T] = []
+            for await (candidate, keepIt) in group {
+                if keepIt {
+                    kept.append(candidate)
                 }
             }
-            return kept.sorted(by: >)
+            return kept
         }
     }
 
