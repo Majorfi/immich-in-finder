@@ -82,5 +82,5 @@ The extension's `Info.plist` **must** include `NSExtensionFileProviderDocumentGr
 - [ ] `Timeline/YYYY/MM` view (via `/api/search/metadata`)
 - [ ] People (facial recognition) and Places (geocoding)
 - [ ] Favorites
-- [ ] Swift 6 strict-concurrency hardening of the extension
+- [x] Swift 6 strict-concurrency hardening of the extension
 - [ ] Write support (upload)

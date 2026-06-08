@@ -119,13 +119,16 @@ final class ImmichItem: NSObject, NSFileProviderItem {
         return NSFileProviderItemVersion(contentVersion: version, metadataVersion: version)
     }
 
-    private static let fractionalDateFormatter: ISO8601DateFormatter = {
+    // Configured once and only ever read from (date(from:)), which Foundation's
+    // date formatters support concurrently. They are reference types and thus
+    // not Sendable, so the shared-mutable-state check needs an explicit opt-out.
+    nonisolated(unsafe) private static let fractionalDateFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
     }()
 
-    private static let plainDateFormatter: ISO8601DateFormatter = {
+    nonisolated(unsafe) private static let plainDateFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
         return formatter

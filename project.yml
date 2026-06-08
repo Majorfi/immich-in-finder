@@ -46,6 +46,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.quub.immichdrive.FileProvider
         CODE_SIGN_ENTITLEMENTS: FileProvider/FileProvider.entitlements
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
     info:
       path: FileProvider/Info.generated.plist
       properties:

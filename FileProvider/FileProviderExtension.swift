@@ -90,18 +90,21 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
     func invalidate() {}
 
     func item(for identifier: NSFileProviderItemIdentifier, request: NSFileProviderRequest, completionHandler: @escaping (NSFileProviderItem?, Error?) -> Void) -> Progress {
+        // The system completion handler is not Sendable but is meant to be
+        // invoked asynchronously from any thread, so the Tasks below may call it.
+        nonisolated(unsafe) let completionHandler = completionHandler
         let progress = Progress(totalUnitCount: 1)
         let parsed = ItemID(identifier)
 
         if let ref = parsed.assetRef {
             guard let cache else {
-                completionHandler(nil, error(.notAuthenticated))
+                completionHandler(nil, Self.error(.notAuthenticated))
                 return progress
             }
             Task {
                 do {
-                    guard let resolved = try await resolve(ref, cache: cache) else {
-                        completionHandler(nil, error(.noSuchItem))
+                    guard let resolved = try await Self.resolve(ref, cache: cache) else {
+                        completionHandler(nil, Self.error(.noSuchItem))
                         progress.completedUnitCount = 1
                         return
                     }
@@ -127,14 +130,14 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
             completionHandler(MonthItem(yearMonth: yearMonth), nil)
         case .album(let albumID):
             guard let cache else {
-                completionHandler(nil, error(.notAuthenticated))
+                completionHandler(nil, Self.error(.notAuthenticated))
                 return progress
             }
             Task {
                 do {
                     let albums = try await cache.albumList()
                     guard let summary = albums.first(where: { $0.albumID == albumID }) else {
-                        completionHandler(nil, error(.noSuchItem))
+                        completionHandler(nil, Self.error(.noSuchItem))
                         progress.completedUnitCount = 1
                         return
                     }
@@ -148,26 +151,27 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
             }
             return progress
         case .asset, .timelineAsset, .other:
-            completionHandler(nil, error(.noSuchItem))
+            completionHandler(nil, Self.error(.noSuchItem))
         }
         progress.completedUnitCount = 1
         return progress
     }
 
     func fetchContents(for itemIdentifier: NSFileProviderItemIdentifier, version requestedVersion: NSFileProviderItemVersion?, request: NSFileProviderRequest, completionHandler: @escaping (URL?, NSFileProviderItem?, Error?) -> Void) -> Progress {
+        nonisolated(unsafe) let completionHandler = completionHandler
         let progress = Progress(totalUnitCount: 1)
         guard let client, let cache else {
-            completionHandler(nil, nil, error(.notAuthenticated))
+            completionHandler(nil, nil, Self.error(.notAuthenticated))
             return progress
         }
         guard let ref = ItemID(itemIdentifier).assetRef else {
-            completionHandler(nil, nil, error(.noSuchItem))
+            completionHandler(nil, nil, Self.error(.noSuchItem))
             return progress
         }
         Task {
             do {
-                guard let resolved = try await resolve(ref, cache: cache) else {
-                    completionHandler(nil, nil, error(.noSuchItem))
+                guard let resolved = try await Self.resolve(ref, cache: cache) else {
+                    completionHandler(nil, nil, Self.error(.noSuchItem))
                     progress.completedUnitCount = 1
                     return
                 }
@@ -186,7 +190,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
 
     func enumerator(for containerItemIdentifier: NSFileProviderItemIdentifier, request: NSFileProviderRequest) throws -> NSFileProviderEnumerator {
         guard let client, let cache else {
-            throw error(.notAuthenticated)
+            throw Self.error(.notAuthenticated)
         }
         fileProviderLog.log("enumerator for: \(containerItemIdentifier.rawValue, privacy: .public)")
         switch ItemID(containerItemIdentifier) {
@@ -203,37 +207,39 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
         case .month(let yearMonth):
             return ItemEnumerator(client: client, cache: cache, container: .month(yearMonth: yearMonth))
         case .asset, .timelineAsset:
-            throw error(.noSuchItem)
+            throw Self.error(.noSuchItem)
         }
     }
 
     // Read-only: write operations are rejected. Item capabilities also exclude
     // them, so the system should not normally reach these.
     func createItem(basedOn itemTemplate: NSFileProviderItem, fields: NSFileProviderItemFields, contents url: URL?, options: NSFileProviderCreateItemOptions = [], request: NSFileProviderRequest, completionHandler: @escaping (NSFileProviderItem?, NSFileProviderItemFields, Bool, Error?) -> Void) -> Progress {
-        completionHandler(nil, [], false, readOnlyError())
+        completionHandler(nil, [], false, Self.readOnlyError())
         return Progress()
     }
 
     func modifyItem(_ item: NSFileProviderItem, baseVersion version: NSFileProviderItemVersion, changedFields: NSFileProviderItemFields, contents newContents: URL?, options: NSFileProviderModifyItemOptions = [], request: NSFileProviderRequest, completionHandler: @escaping (NSFileProviderItem?, NSFileProviderItemFields, Bool, Error?) -> Void) -> Progress {
-        completionHandler(nil, [], false, readOnlyError())
+        completionHandler(nil, [], false, Self.readOnlyError())
         return Progress()
     }
 
     func deleteItem(identifier: NSFileProviderItemIdentifier, baseVersion version: NSFileProviderItemVersion, options: NSFileProviderDeleteItemOptions = [], request: NSFileProviderRequest, completionHandler: @escaping (Error?) -> Void) -> Progress {
-        completionHandler(readOnlyError())
+        completionHandler(Self.readOnlyError())
         return Progress()
     }
 
-    private func resolve(_ ref: (assetID: String, location: AssetLocation), cache: ImmichCache) async throws -> (asset: Asset, filename: String)? {
+    // Static so the async Tasks below can call it without capturing self (a
+    // non-Sendable NSObject), which Swift 6 region isolation forbids.
+    private static func resolve(_ ref: (assetID: String, location: AssetLocation), cache: ImmichCache) async throws -> (asset: Asset, filename: String)? {
         let siblings = try await ref.location.siblings(from: cache)
         return resolveAsset(ref.assetID, in: siblings)
     }
 
-    private func error(_ code: NSFileProviderError.Code) -> NSError {
+    private static func error(_ code: NSFileProviderError.Code) -> NSError {
         NSError(domain: NSFileProviderErrorDomain, code: code.rawValue)
     }
 
-    private func readOnlyError() -> NSError {
+    private static func readOnlyError() -> NSError {
         NSError(domain: NSCocoaErrorDomain, code: NSFeatureUnsupportedError)
     }
 
@@ -247,16 +253,18 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
 
 extension FileProviderExtension: NSFileProviderThumbnailing {
     func fetchThumbnails(for itemIdentifiers: [NSFileProviderItemIdentifier], requestedSize size: CGSize, perThumbnailCompletionHandler: @escaping (NSFileProviderItemIdentifier, Data?, Error?) -> Void, completionHandler: @escaping (Error?) -> Void) -> Progress {
+        nonisolated(unsafe) let perThumbnailCompletionHandler = perThumbnailCompletionHandler
+        nonisolated(unsafe) let completionHandler = completionHandler
         let progress = Progress(totalUnitCount: Int64(itemIdentifiers.count))
         guard let client else {
-            completionHandler(error(.notAuthenticated))
+            completionHandler(Self.error(.notAuthenticated))
             return progress
         }
         Task {
             await withTaskGroup(of: Void.self) { group in
                 for identifier in itemIdentifiers {
                     guard let assetID = ItemID(identifier).assetRef?.assetID else {
-                        perThumbnailCompletionHandler(identifier, nil, error(.noSuchItem))
+                        perThumbnailCompletionHandler(identifier, nil, Self.error(.noSuchItem))
                         continue
                     }
                     group.addTask {

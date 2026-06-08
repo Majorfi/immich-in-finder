@@ -91,6 +91,14 @@ final class ItemEnumerator: NSObject, NSFileProviderEnumerator {
     func invalidate() {}
 
     func enumerateItems(for observer: NSFileProviderEnumerationObserver, startingAt page: NSFileProviderPage) {
+        // Bind the Sendable stored properties to locals so the Task does not
+        // capture self (a non-Sendable NSObject), per Swift 6 region isolation.
+        let container = self.container
+        let cache = self.cache
+        let client = self.client
+        // The system's enumeration observer is not Sendable but is documented to
+        // accept callbacks from any thread, so crossing into the Task is safe.
+        nonisolated(unsafe) let observer = observer
         Task {
             do {
                 switch container {
