@@ -2,6 +2,11 @@ import Foundation
 import FileProvider
 import UniformTypeIdentifiers
 
+enum AssetLocation {
+    case album(id: String)
+    case month(yearMonth: String)
+}
+
 // Keeps a name intact unless it collides with another in the same container,
 // in which case a short id fragment is inserted before the extension. The rule
 // is deterministic given the sibling list, so enumeration and item(for:) agree.
@@ -22,21 +27,31 @@ func disambiguatedName(base: String, id: String, among allNames: [String]) -> St
 
 final class ImmichItem: NSObject, NSFileProviderItem {
     private let asset: Asset
-    private let albumID: String
+    private let location: AssetLocation
     private let displayName: String
 
-    init(asset: Asset, albumID: String, filename: String) {
+    init(asset: Asset, location: AssetLocation, filename: String) {
         self.asset = asset
-        self.albumID = albumID
+        self.location = location
         self.displayName = filename
     }
 
     var itemIdentifier: NSFileProviderItemIdentifier {
-        NSFileProviderItemIdentifier(rawValue: "asset:\(albumID):\(asset.assetID)")
+        switch location {
+        case .album(let id):
+            return NSFileProviderItemIdentifier(rawValue: "asset:\(id):\(asset.assetID)")
+        case .month(let yearMonth):
+            return NSFileProviderItemIdentifier(rawValue: "tasset:\(yearMonth):\(asset.assetID)")
+        }
     }
 
     var parentItemIdentifier: NSFileProviderItemIdentifier {
-        NSFileProviderItemIdentifier(rawValue: "album:\(albumID)")
+        switch location {
+        case .album(let id):
+            return NSFileProviderItemIdentifier(rawValue: "album:\(id)")
+        case .month(let yearMonth):
+            return NSFileProviderItemIdentifier(rawValue: "month:\(yearMonth)")
+        }
     }
 
     var filename: String {
@@ -70,15 +85,16 @@ final class ImmichItem: NSObject, NSFileProviderItem {
     }
 
     var contentModificationDate: Date? {
-        ImmichItem.parseDate(asset.fileModifiedAt)
+        guard let modified = asset.fileModifiedAt else { return nil }
+        return ImmichItem.parseDate(modified)
     }
 
     var itemVersion: NSFileProviderItemVersion {
-        let version = Data(asset.checksum.utf8)
+        let version = Data((asset.checksum ?? asset.assetID).utf8)
         return NSFileProviderItemVersion(contentVersion: version, metadataVersion: version)
     }
 
-    private static func parseDate(_ string: String) -> Date? {
+    static func parseDate(_ string: String) -> Date? {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         if let date = formatter.date(from: string) {
@@ -86,6 +102,26 @@ final class ImmichItem: NSObject, NSFileProviderItem {
         }
         formatter.formatOptions = [.withInternetDateTime]
         return formatter.date(from: string)
+    }
+}
+
+final class SectionItem: NSObject, NSFileProviderItem {
+    private let id: String
+    private let name: String
+
+    init(id: String, name: String) {
+        self.id = id
+        self.name = name
+    }
+
+    var itemIdentifier: NSFileProviderItemIdentifier { NSFileProviderItemIdentifier(rawValue: id) }
+    var parentItemIdentifier: NSFileProviderItemIdentifier { .rootContainer }
+    var filename: String { name }
+    var contentType: UTType { .folder }
+    var capabilities: NSFileProviderItemCapabilities { [.allowsContentEnumerating, .allowsReading] }
+    var itemVersion: NSFileProviderItemVersion {
+        let version = Data("section:\(id)".utf8)
+        return NSFileProviderItemVersion(contentVersion: version, metadataVersion: version)
     }
 }
 
@@ -103,16 +139,11 @@ final class AlbumItem: NSObject, NSFileProviderItem {
     }
 
     var parentItemIdentifier: NSFileProviderItemIdentifier {
-        .rootContainer
+        NSFileProviderItemIdentifier(rawValue: "section:albums")
     }
 
-    var filename: String {
-        displayName
-    }
-
-    var contentType: UTType {
-        .folder
-    }
+    var filename: String { displayName }
+    var contentType: UTType { .folder }
 
     var capabilities: NSFileProviderItemCapabilities {
         [.allowsContentEnumerating, .allowsReading]
@@ -124,6 +155,54 @@ final class AlbumItem: NSObject, NSFileProviderItem {
 
     var itemVersion: NSFileProviderItemVersion {
         let version = Data("album:\(album.albumName):\(album.assetCount)".utf8)
+        return NSFileProviderItemVersion(contentVersion: version, metadataVersion: version)
+    }
+}
+
+final class YearItem: NSObject, NSFileProviderItem {
+    private let year: String
+
+    init(year: String) {
+        self.year = year
+    }
+
+    var itemIdentifier: NSFileProviderItemIdentifier {
+        NSFileProviderItemIdentifier(rawValue: "year:\(year)")
+    }
+
+    var parentItemIdentifier: NSFileProviderItemIdentifier {
+        NSFileProviderItemIdentifier(rawValue: "section:timeline")
+    }
+
+    var filename: String { year }
+    var contentType: UTType { .folder }
+    var capabilities: NSFileProviderItemCapabilities { [.allowsContentEnumerating, .allowsReading] }
+    var itemVersion: NSFileProviderItemVersion {
+        let version = Data("year:\(year)".utf8)
+        return NSFileProviderItemVersion(contentVersion: version, metadataVersion: version)
+    }
+}
+
+final class MonthItem: NSObject, NSFileProviderItem {
+    private let yearMonth: String
+
+    init(yearMonth: String) {
+        self.yearMonth = yearMonth
+    }
+
+    var itemIdentifier: NSFileProviderItemIdentifier {
+        NSFileProviderItemIdentifier(rawValue: "month:\(yearMonth)")
+    }
+
+    var parentItemIdentifier: NSFileProviderItemIdentifier {
+        NSFileProviderItemIdentifier(rawValue: "year:\(String(yearMonth.prefix(4)))")
+    }
+
+    var filename: String { String(yearMonth.suffix(2)) }
+    var contentType: UTType { .folder }
+    var capabilities: NSFileProviderItemCapabilities { [.allowsContentEnumerating, .allowsReading] }
+    var itemVersion: NSFileProviderItemVersion {
+        let version = Data("month:\(yearMonth)".utf8)
         return NSFileProviderItemVersion(contentVersion: version, metadataVersion: version)
     }
 }

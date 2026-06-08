@@ -4,8 +4,13 @@ import CoreGraphics
 
 enum ItemID {
     case root
+    case albumsSection
+    case timelineSection
     case album(String)
     case asset(albumID: String, assetID: String)
+    case year(String)
+    case month(String)
+    case timelineAsset(yearMonth: String, assetID: String)
     case other
 
     init(_ identifier: NSFileProviderItemIdentifier) {
@@ -14,8 +19,24 @@ enum ItemID {
             return
         }
         let raw = identifier.rawValue
+        if raw == "section:albums" {
+            self = .albumsSection
+            return
+        }
+        if raw == "section:timeline" {
+            self = .timelineSection
+            return
+        }
         if raw.hasPrefix("album:") {
             self = .album(String(raw.dropFirst(6)))
+            return
+        }
+        if raw.hasPrefix("year:") {
+            self = .year(String(raw.dropFirst(5)))
+            return
+        }
+        if raw.hasPrefix("month:") {
+            self = .month(String(raw.dropFirst(6)))
             return
         }
         if raw.hasPrefix("asset:") {
@@ -25,7 +46,22 @@ enum ItemID {
                 return
             }
         }
+        if raw.hasPrefix("tasset:") {
+            let parts = raw.dropFirst(7).split(separator: ":", maxSplits: 1).map(String.init)
+            if parts.count == 2 {
+                self = .timelineAsset(yearMonth: parts[0], assetID: parts[1])
+                return
+            }
+        }
         self = .other
+    }
+
+    var assetID: String? {
+        switch self {
+        case .asset(_, let id): return id
+        case .timelineAsset(_, let id): return id
+        default: return nil
+        }
     }
 }
 
@@ -49,6 +85,14 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
         switch ItemID(identifier) {
         case .root:
             completionHandler(RootItem(), nil)
+        case .albumsSection:
+            completionHandler(SectionItem(id: "section:albums", name: "Albums"), nil)
+        case .timelineSection:
+            completionHandler(SectionItem(id: "section:timeline", name: "Timeline"), nil)
+        case .year(let year):
+            completionHandler(YearItem(year: year), nil)
+        case .month(let yearMonth):
+            completionHandler(MonthItem(yearMonth: yearMonth), nil)
         case .other:
             completionHandler(nil, error(.noSuchItem))
         case .album(let albumID):
@@ -88,7 +132,22 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     }
                     let names = assets.map { $0.originalFileName }
                     let filename = disambiguatedName(base: asset.originalFileName, id: assetID, among: names)
-                    completionHandler(ImmichItem(asset: asset, albumID: albumID, filename: filename), nil)
+                    completionHandler(ImmichItem(asset: asset, location: .album(id: albumID), filename: filename), nil)
+                } catch {
+                    completionHandler(nil, error)
+                }
+                progress.completedUnitCount = 1
+            }
+            return progress
+        case .timelineAsset(let yearMonth, let assetID):
+            guard let client else {
+                completionHandler(nil, error(.notAuthenticated))
+                return progress
+            }
+            Task {
+                do {
+                    let asset = try await client.asset(id: assetID)
+                    completionHandler(ImmichItem(asset: asset, location: .month(yearMonth: yearMonth), filename: asset.originalFileName), nil)
                 } catch {
                     completionHandler(nil, error)
                 }
@@ -106,28 +165,44 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
             completionHandler(nil, nil, error(.notAuthenticated))
             return progress
         }
-        guard case .asset(let albumID, let assetID) = ItemID(itemIdentifier) else {
-            completionHandler(nil, nil, error(.noSuchItem))
-            return progress
-        }
-        Task {
-            do {
-                let assets = try await client.album(id: albumID).assets
-                guard let asset = assets.first(where: { $0.assetID == assetID }) else {
-                    completionHandler(nil, nil, error(.noSuchItem))
-                    progress.completedUnitCount = 1
-                    return
+        switch ItemID(itemIdentifier) {
+        case .asset(let albumID, let assetID):
+            Task {
+                do {
+                    let assets = try await client.album(id: albumID).assets
+                    guard let asset = assets.first(where: { $0.assetID == assetID }) else {
+                        completionHandler(nil, nil, error(.noSuchItem))
+                        progress.completedUnitCount = 1
+                        return
+                    }
+                    let names = assets.map { $0.originalFileName }
+                    let filename = disambiguatedName(base: asset.originalFileName, id: assetID, among: names)
+                    let data = try await client.downloadOriginal(assetID: assetID)
+                    fileProviderLog.log("fetchContents \(assetID, privacy: .public) — \(data.count, privacy: .public) bytes")
+                    let url = try Self.writeTemporary(data: data, filename: filename)
+                    completionHandler(url, ImmichItem(asset: asset, location: .album(id: albumID), filename: filename), nil)
+                } catch {
+                    fileProviderLog.error("fetchContents failed for \(assetID, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                    completionHandler(nil, nil, error)
                 }
-                let names = assets.map { $0.originalFileName }
-                let filename = disambiguatedName(base: asset.originalFileName, id: assetID, among: names)
-                let data = try await client.downloadOriginal(assetID: assetID)
-                fileProviderLog.log("fetchContents \(assetID, privacy: .public) — \(data.count, privacy: .public) bytes")
-                let url = try Self.writeTemporary(data: data, filename: filename)
-                completionHandler(url, ImmichItem(asset: asset, albumID: albumID, filename: filename), nil)
-            } catch {
-                fileProviderLog.error("fetchContents failed for \(assetID, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                completionHandler(nil, nil, error)
+                progress.completedUnitCount = 1
             }
+        case .timelineAsset(let yearMonth, let assetID):
+            Task {
+                do {
+                    let asset = try await client.asset(id: assetID)
+                    let data = try await client.downloadOriginal(assetID: assetID)
+                    fileProviderLog.log("fetchContents \(assetID, privacy: .public) — \(data.count, privacy: .public) bytes")
+                    let url = try Self.writeTemporary(data: data, filename: asset.originalFileName)
+                    completionHandler(url, ImmichItem(asset: asset, location: .month(yearMonth: yearMonth), filename: asset.originalFileName), nil)
+                } catch {
+                    fileProviderLog.error("fetchContents failed for \(assetID, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                    completionHandler(nil, nil, error)
+                }
+                progress.completedUnitCount = 1
+            }
+        default:
+            completionHandler(nil, nil, error(.noSuchItem))
             progress.completedUnitCount = 1
         }
         return progress
@@ -140,10 +215,18 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
         fileProviderLog.log("enumerator for: \(containerItemIdentifier.rawValue, privacy: .public)")
         switch ItemID(containerItemIdentifier) {
         case .root, .other:
+            return ItemEnumerator(client: client, container: .sections)
+        case .albumsSection:
             return ItemEnumerator(client: client, container: .albums)
+        case .timelineSection:
+            return ItemEnumerator(client: client, container: .years)
         case .album(let id):
             return ItemEnumerator(client: client, container: .album(id: id))
-        case .asset:
+        case .year(let year):
+            return ItemEnumerator(client: client, container: .months(year: year))
+        case .month(let yearMonth):
+            return ItemEnumerator(client: client, container: .month(yearMonth: yearMonth))
+        case .asset, .timelineAsset:
             throw error(.noSuchItem)
         }
     }
@@ -191,7 +274,7 @@ extension FileProviderExtension: NSFileProviderThumbnailing {
         }
         Task {
             for identifier in itemIdentifiers {
-                guard case .asset(_, let assetID) = ItemID(identifier) else {
+                guard let assetID = ItemID(identifier).assetID else {
                     perThumbnailCompletionHandler(identifier, nil, error(.noSuchItem))
                     progress.completedUnitCount += 1
                     continue
