@@ -97,9 +97,15 @@ final class ImmichItem: NSObject, NSFileProviderItem {
     }
 
     var capabilities: NSFileProviderItemCapabilities {
-        // Deleting maps to moving the asset to the Immich trash. Renaming and
-        // reparenting are not yet supported.
-        [.allowsReading, .allowsEvicting, .allowsDeleting]
+        // Deleting maps to moving the asset to the Immich trash. Assets in an
+        // album can be moved to another album; Timeline assets cannot (their
+        // month is derived from the capture date, not a real membership).
+        switch location {
+        case .album:
+            return [.allowsReading, .allowsEvicting, .allowsDeleting, .allowsReparenting]
+        case .month:
+            return [.allowsReading, .allowsEvicting, .allowsDeleting]
+        }
     }
 
     var documentSize: NSNumber? {
@@ -192,9 +198,9 @@ final class AlbumItem: NSObject, NSFileProviderItem {
     var contentType: UTType { .folder }
 
     var capabilities: NSFileProviderItemCapabilities {
-        // Files can be dropped in (uploaded + added to this album). Renaming and
-        // deleting the album itself are not yet supported.
-        [.allowsContentEnumerating, .allowsReading, .allowsAddingSubItems]
+        // Files can be dropped in (uploaded + added to this album) and the album
+        // can be renamed. Deleting the album itself is not yet supported.
+        [.allowsContentEnumerating, .allowsReading, .allowsAddingSubItems, .allowsRenaming]
     }
 
     var childItemCount: NSNumber? {

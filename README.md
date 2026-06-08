@@ -82,6 +82,6 @@ The extension's `Info.plist` **must** include `NSExtensionFileProviderDocumentGr
 - [x] `Timeline/YYYY/MM` view (via `/api/search/metadata`)
 - [x] Swift 6 strict-concurrency hardening of the extension
 - [x] Write support, phase 1: upload into albums, create albums, delete to trash
-- [ ] Write support, phase 2: rename/move albums, move assets between albums
+- [x] Write support, phase 2: rename albums, move assets between albums
 - [ ] People (facial recognition) and Places (geocoding)
 - [ ] Favorites

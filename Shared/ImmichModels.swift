@@ -88,6 +88,10 @@ struct CreateAlbumRequest: Encodable, Sendable {
     let assetIds: [String]
 }
 
+struct UpdateAlbumRequest: Encodable, Sendable {
+    let albumName: String
+}
+
 // force=false moves assets to the Immich trash (recoverable for 30 days)
 // rather than deleting them permanently.
 struct TrashRequest: Encodable, Sendable {

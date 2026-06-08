@@ -278,10 +278,71 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
         return progress
     }
 
-    // Renaming and moving are not yet supported.
+    // Renaming an album folder renames the Immich album; moving an album asset
+    // to another album folder re-links it (add to destination, remove from
+    // source). Other field changes are accepted as no-ops so the system does
+    // not keep retrying metadata it cannot push to Immich.
     func modifyItem(_ item: NSFileProviderItem, baseVersion version: NSFileProviderItemVersion, changedFields: NSFileProviderItemFields, contents newContents: URL?, options: NSFileProviderModifyItemOptions = [], request: NSFileProviderRequest, completionHandler: @escaping (NSFileProviderItem?, NSFileProviderItemFields, Bool, Error?) -> Void) -> Progress {
-        completionHandler(nil, [], false, Self.readOnlyError())
-        return Progress()
+        nonisolated(unsafe) let completionHandler = completionHandler
+        let progress = Progress(totalUnitCount: 1)
+        guard let client, let cache else {
+            completionHandler(nil, [], false, Self.error(.notAuthenticated))
+            return progress
+        }
+        let parsed = ItemID(item.itemIdentifier)
+
+        if changedFields.contains(.filename), case .album(let albumID) = parsed {
+            let newName = item.filename
+            Task {
+                do {
+                    let album = try await client.renameAlbum(id: albumID, name: newName)
+                    await cache.invalidateAlbumList()
+                    fileProviderLog.log("renamed album \(albumID, privacy: .public)")
+                    completionHandler(AlbumItem(album: album, filename: album.albumName), [], false, nil)
+                } catch {
+                    fileProviderLog.error("renameAlbum failed: \(error.localizedDescription, privacy: .public)")
+                    completionHandler(nil, [], false, error)
+                }
+                progress.completedUnitCount = 1
+            }
+            return progress
+        }
+
+        if changedFields.contains(.parentItemIdentifier), let ref = parsed.assetRef, case .album(let srcAlbum) = ref.location {
+            guard case .album(let destAlbum) = ItemID(item.parentItemIdentifier) else {
+                completionHandler(nil, [], false, Self.readOnlyError())
+                return progress
+            }
+            let assetID = ref.assetID
+            Task {
+                do {
+                    // Add before remove: if the second call fails the asset is in
+                    // both albums (recoverable) rather than lost from both.
+                    try await client.addAssets(albumID: destAlbum, assetIDs: [assetID])
+                    try await client.removeAssets(albumID: srcAlbum, assetIDs: [assetID])
+                    await cache.invalidate(album: srcAlbum)
+                    await cache.invalidate(album: destAlbum)
+                    let siblings = try await cache.assets(album: destAlbum)
+                    guard let resolved = resolveAsset(assetID, in: siblings) else {
+                        completionHandler(nil, [], false, Self.error(.noSuchItem))
+                        progress.completedUnitCount = 1
+                        return
+                    }
+                    fileProviderLog.log("moved asset \(assetID, privacy: .public): \(srcAlbum, privacy: .public) -> \(destAlbum, privacy: .public)")
+                    completionHandler(ImmichItem(asset: resolved.asset, location: .album(id: destAlbum), filename: resolved.filename), [], false, nil)
+                } catch {
+                    fileProviderLog.error("move failed for \(assetID, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                    completionHandler(nil, [], false, error)
+                }
+                progress.completedUnitCount = 1
+            }
+            return progress
+        }
+
+        // Unsupported field change (content edit, metadata, Timeline reparent):
+        // accept as a no-op rather than erroring.
+        completionHandler(item, [], false, nil)
+        return progress
     }
 
     // Deleting an asset moves it to the Immich trash (recoverable for 30 days).

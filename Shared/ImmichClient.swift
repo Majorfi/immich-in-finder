@@ -91,6 +91,15 @@ struct ImmichClient: Sendable {
         _ = try await sendJSON(method: "PUT", path: "/api/albums/\(albumID)/assets", body: AssetIDsRequest(ids: assetIDs))
     }
 
+    func removeAssets(albumID: String, assetIDs: [String]) async throws {
+        _ = try await sendJSON(method: "DELETE", path: "/api/albums/\(albumID)/assets", body: AssetIDsRequest(ids: assetIDs))
+    }
+
+    func renameAlbum(id: String, name: String) async throws -> AlbumSummary {
+        let data = try await sendJSON(method: "PATCH", path: "/api/albums/\(id)", body: UpdateAlbumRequest(albumName: name))
+        return try JSONDecoder().decode(AlbumSummary.self, from: data)
+    }
+
     func createAlbum(name: String) async throws -> AlbumSummary {
         let data = try await sendJSON(method: "POST", path: "/api/albums", body: CreateAlbumRequest(albumName: name, assetIds: []))
         return try JSONDecoder().decode(AlbumSummary.self, from: data)
