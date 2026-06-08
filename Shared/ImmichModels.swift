@@ -15,9 +15,9 @@ struct Asset: Decodable, Sendable {
     let assetID: String
     let type: AssetType
     let originalFileName: String
-    let checksum: String
+    let checksum: String?
     let fileCreatedAt: String
-    let fileModifiedAt: String
+    let fileModifiedAt: String?
     let exifInfo: ExifInfo?
 
     enum CodingKeys: String, CodingKey {
@@ -53,4 +53,21 @@ struct Album: Decodable, Sendable {
         case albumName
         case assets
     }
+}
+
+struct SearchResponse: Decodable, Sendable {
+    let assets: SearchAssets
+}
+
+struct SearchAssets: Decodable, Sendable {
+    let items: [Asset]
+    let nextPage: String?
+}
+
+struct MetadataSearchRequest: Encodable, Sendable {
+    let takenAfter: String?
+    let takenBefore: String?
+    let page: Int
+    let size: Int
+    let order: String
 }
