@@ -7,12 +7,19 @@ enum AssetLocation {
     case month(yearMonth: String)
 }
 
+func nameCounts(_ names: [String]) -> [String: Int] {
+    var counts: [String: Int] = [:]
+    for name in names {
+        counts[name, default: 0] += 1
+    }
+    return counts
+}
+
 // Keeps a name intact unless it collides with another in the same container,
 // in which case a short id fragment is inserted before the extension. The rule
-// is deterministic given the sibling list, so enumeration and item(for:) agree.
-func disambiguatedName(base: String, id: String, among allNames: [String]) -> String {
-    let occurrences = allNames.filter { $0 == base }.count
-    if occurrences <= 1 {
+// is deterministic given the sibling counts, so enumeration and item(for:) agree.
+func disambiguatedName(base: String, id: String, counts: [String: Int]) -> String {
+    if (counts[base] ?? 0) <= 1 {
         return base
     }
     let fragment = String(id.prefix(8))
@@ -23,6 +30,24 @@ func disambiguatedName(base: String, id: String, among allNames: [String]) -> St
         return "\(stem) (\(fragment))"
     }
     return "\(stem) (\(fragment)).\(ext)"
+}
+
+// The single chokepoint that turns a container's asset list into items, so
+// enumeration and single-item resolution name files identically.
+func immichItems(from assets: [Asset], location: AssetLocation) -> [ImmichItem] {
+    let counts = nameCounts(assets.map { $0.originalFileName })
+    return assets.map {
+        ImmichItem(asset: $0, location: location, filename: disambiguatedName(base: $0.originalFileName, id: $0.assetID, counts: counts))
+    }
+}
+
+func resolveAsset(_ assetID: String, in assets: [Asset]) -> (asset: Asset, filename: String)? {
+    guard let asset = assets.first(where: { $0.assetID == assetID }) else {
+        return nil
+    }
+    let counts = nameCounts(assets.map { $0.originalFileName })
+    let filename = disambiguatedName(base: asset.originalFileName, id: assetID, counts: counts)
+    return (asset, filename)
 }
 
 final class ImmichItem: NSObject, NSFileProviderItem {
@@ -94,14 +119,23 @@ final class ImmichItem: NSObject, NSFileProviderItem {
         return NSFileProviderItemVersion(contentVersion: version, metadataVersion: version)
     }
 
-    static func parseDate(_ string: String) -> Date? {
+    private static let fractionalDateFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: string) {
+        return formatter
+    }()
+
+    private static let plainDateFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    static func parseDate(_ string: String) -> Date? {
+        if let date = fractionalDateFormatter.date(from: string) {
             return date
         }
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: string)
+        return plainDateFormatter.date(from: string)
     }
 }
 
@@ -198,11 +232,20 @@ final class MonthItem: NSObject, NSFileProviderItem {
         NSFileProviderItemIdentifier(rawValue: "year:\(String(yearMonth.prefix(4)))")
     }
 
-    var filename: String { String(yearMonth.suffix(2)) }
+    private static let monthNames: [String] = DateFormatter().standaloneMonthSymbols ?? []
+
+    var filename: String {
+        let monthNumber = Int(yearMonth.suffix(2)) ?? 0
+        if monthNumber >= 1, monthNumber <= MonthItem.monthNames.count {
+            return String(format: "%02d — %@", monthNumber, MonthItem.monthNames[monthNumber - 1].capitalized)
+        }
+        return String(yearMonth.suffix(2))
+    }
+
     var contentType: UTType { .folder }
     var capabilities: NSFileProviderItemCapabilities { [.allowsContentEnumerating, .allowsReading] }
     var itemVersion: NSFileProviderItemVersion {
-        let version = Data("month:\(yearMonth)".utf8)
+        let version = Data("month:\(yearMonth):named".utf8)
         return NSFileProviderItemVersion(contentVersion: version, metadataVersion: version)
     }
 }
