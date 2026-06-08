@@ -1,6 +1,7 @@
 import Foundation
 import FileProvider
 import CoreGraphics
+import UniformTypeIdentifiers
 
 enum ItemID {
     case root
@@ -211,21 +212,109 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
         }
     }
 
-    // Read-only: write operations are rejected. Item capabilities also exclude
-    // them, so the system should not normally reach these.
+    // Creating a folder under the Albums section makes a new Immich album;
+    // dropping a file into an album folder uploads it and adds it to that album.
+    // Everywhere else (Timeline, root) is read-only.
     func createItem(basedOn itemTemplate: NSFileProviderItem, fields: NSFileProviderItemFields, contents url: URL?, options: NSFileProviderCreateItemOptions = [], request: NSFileProviderRequest, completionHandler: @escaping (NSFileProviderItem?, NSFileProviderItemFields, Bool, Error?) -> Void) -> Progress {
-        completionHandler(nil, [], false, Self.readOnlyError())
-        return Progress()
+        nonisolated(unsafe) let completionHandler = completionHandler
+        let progress = Progress(totalUnitCount: 1)
+        guard let client, let cache else {
+            completionHandler(nil, [], false, Self.error(.notAuthenticated))
+            return progress
+        }
+        let parent = ItemID(itemTemplate.parentItemIdentifier)
+        let filename = itemTemplate.filename
+
+        if itemTemplate.contentType?.conforms(to: .folder) == true {
+            guard case .albumsSection = parent else {
+                completionHandler(nil, [], false, Self.readOnlyError())
+                return progress
+            }
+            Task {
+                do {
+                    let album = try await client.createAlbum(name: filename)
+                    await cache.invalidateAlbumList()
+                    fileProviderLog.log("created album \(album.albumID, privacy: .public)")
+                    completionHandler(AlbumItem(album: album, filename: album.albumName), [], false, nil)
+                } catch {
+                    fileProviderLog.error("createAlbum failed: \(error.localizedDescription, privacy: .public)")
+                    completionHandler(nil, [], false, error)
+                }
+                progress.completedUnitCount = 1
+            }
+            return progress
+        }
+
+        guard case .album(let albumID) = parent, let url else {
+            completionHandler(nil, [], false, Self.readOnlyError())
+            return progress
+        }
+        let createdAt = Self.isoString(itemTemplate.creationDate ?? nil)
+        let modifiedAt = Self.isoString(itemTemplate.contentModificationDate ?? nil)
+        let contentType = itemTemplate.contentType
+        Task {
+            do {
+                let data = try Data(contentsOf: url)
+                let result = try await client.uploadAsset(filename: filename, data: data, createdAt: createdAt, modifiedAt: modifiedAt)
+                try await client.addAssets(albumID: albumID, assetIDs: [result.id])
+                await cache.invalidate(album: albumID)
+                fileProviderLog.log("uploaded \(result.id, privacy: .public) (duplicate: \(result.isDuplicate, privacy: .public)) → album \(albumID, privacy: .public)")
+                let asset = Asset(
+                    assetID: result.id,
+                    type: Self.assetType(for: contentType),
+                    originalFileName: filename,
+                    checksum: nil,
+                    fileCreatedAt: createdAt,
+                    fileModifiedAt: modifiedAt,
+                    exifInfo: ExifInfo(fileSizeInByte: Int64(data.count))
+                )
+                completionHandler(ImmichItem(asset: asset, location: .album(id: albumID), filename: filename), [], false, nil)
+            } catch {
+                fileProviderLog.error("upload failed for \(filename, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                completionHandler(nil, [], false, error)
+            }
+            progress.completedUnitCount = 1
+        }
+        return progress
     }
 
+    // Renaming and moving are not yet supported.
     func modifyItem(_ item: NSFileProviderItem, baseVersion version: NSFileProviderItemVersion, changedFields: NSFileProviderItemFields, contents newContents: URL?, options: NSFileProviderModifyItemOptions = [], request: NSFileProviderRequest, completionHandler: @escaping (NSFileProviderItem?, NSFileProviderItemFields, Bool, Error?) -> Void) -> Progress {
         completionHandler(nil, [], false, Self.readOnlyError())
         return Progress()
     }
 
+    // Deleting an asset moves it to the Immich trash (recoverable for 30 days).
+    // Only assets are deletable; album/section folders are read-only here.
     func deleteItem(identifier: NSFileProviderItemIdentifier, baseVersion version: NSFileProviderItemVersion, options: NSFileProviderDeleteItemOptions = [], request: NSFileProviderRequest, completionHandler: @escaping (Error?) -> Void) -> Progress {
-        completionHandler(Self.readOnlyError())
-        return Progress()
+        nonisolated(unsafe) let completionHandler = completionHandler
+        let progress = Progress(totalUnitCount: 1)
+        guard let client, let cache else {
+            completionHandler(Self.error(.notAuthenticated))
+            return progress
+        }
+        guard let ref = ItemID(identifier).assetRef else {
+            completionHandler(Self.readOnlyError())
+            return progress
+        }
+        Task {
+            do {
+                try await client.trashAssets(assetIDs: [ref.assetID])
+                switch ref.location {
+                case .album(let id):
+                    await cache.invalidate(album: id)
+                case .month(let yearMonth):
+                    await cache.invalidate(month: yearMonth)
+                }
+                fileProviderLog.log("trashed asset \(ref.assetID, privacy: .public)")
+                completionHandler(nil)
+            } catch {
+                fileProviderLog.error("trash failed for \(ref.assetID, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                completionHandler(error)
+            }
+            progress.completedUnitCount = 1
+        }
+        return progress
     }
 
     // Static so the async Tasks below can call it without capturing self (a
@@ -248,6 +337,24 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString)-\(safeName)")
         try data.write(to: url)
         return url
+    }
+
+    nonisolated(unsafe) private static let uploadDateFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static func isoString(_ date: Date?) -> String {
+        uploadDateFormatter.string(from: date ?? Date())
+    }
+
+    private static func assetType(for type: UTType?) -> AssetType {
+        guard let type else { return .other }
+        if type.conforms(to: .image) { return .image }
+        if type.conforms(to: .movie) || type.conforms(to: .audiovisualContent) { return .video }
+        if type.conforms(to: .audio) { return .audio }
+        return .other
     }
 }
 

@@ -97,7 +97,9 @@ final class ImmichItem: NSObject, NSFileProviderItem {
     }
 
     var capabilities: NSFileProviderItemCapabilities {
-        [.allowsReading, .allowsEvicting]
+        // Deleting maps to moving the asset to the Immich trash. Renaming and
+        // reparenting are not yet supported.
+        [.allowsReading, .allowsEvicting, .allowsDeleting]
     }
 
     var documentSize: NSNumber? {
@@ -155,7 +157,14 @@ final class SectionItem: NSObject, NSFileProviderItem {
     var parentItemIdentifier: NSFileProviderItemIdentifier { .rootContainer }
     var filename: String { name }
     var contentType: UTType { .folder }
-    var capabilities: NSFileProviderItemCapabilities { [.allowsContentEnumerating, .allowsReading] }
+    var capabilities: NSFileProviderItemCapabilities {
+        // Only the Albums section accepts new folders (creating an Immich album);
+        // the Timeline section is read-only.
+        if id == "section:albums" {
+            return [.allowsContentEnumerating, .allowsReading, .allowsAddingSubItems]
+        }
+        return [.allowsContentEnumerating, .allowsReading]
+    }
     var itemVersion: NSFileProviderItemVersion {
         let version = Data("section:\(id)".utf8)
         return NSFileProviderItemVersion(contentVersion: version, metadataVersion: version)
@@ -183,7 +192,9 @@ final class AlbumItem: NSObject, NSFileProviderItem {
     var contentType: UTType { .folder }
 
     var capabilities: NSFileProviderItemCapabilities {
-        [.allowsContentEnumerating, .allowsReading]
+        // Files can be dropped in (uploaded + added to this album). Renaming and
+        // deleting the album itself are not yet supported.
+        [.allowsContentEnumerating, .allowsReading, .allowsAddingSubItems]
     }
 
     var childItemCount: NSNumber? {

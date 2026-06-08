@@ -71,3 +71,26 @@ struct MetadataSearchRequest: Encodable, Sendable {
     let size: Int
     let order: String
 }
+
+// POST /api/assets returns the new id plus whether the server recognised the
+// upload as a checksum duplicate of an asset it already holds.
+struct UploadResponse: Decodable, Sendable {
+    let id: String
+    let status: String
+}
+
+struct AssetIDsRequest: Encodable, Sendable {
+    let ids: [String]
+}
+
+struct CreateAlbumRequest: Encodable, Sendable {
+    let albumName: String
+    let assetIds: [String]
+}
+
+// force=false moves assets to the Immich trash (recoverable for 30 days)
+// rather than deleting them permanently.
+struct TrashRequest: Encodable, Sendable {
+    let ids: [String]
+    let force: Bool
+}

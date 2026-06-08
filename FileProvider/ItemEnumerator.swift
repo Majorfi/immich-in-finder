@@ -42,6 +42,20 @@ actor ImmichCache {
         }
     }
 
+    // Write operations drop the memoized fetch for the affected container so the
+    // next enumeration re-reads it from the server instead of stale data.
+    func invalidateAlbumList() {
+        albumListTask = nil
+    }
+
+    func invalidate(album albumID: String) {
+        assetTasks["album:\(albumID)"] = nil
+    }
+
+    func invalidate(month yearMonth: String) {
+        assetTasks["month:\(yearMonth)"] = nil
+    }
+
     private func cachedAssets(key: String, fetch: @Sendable @escaping () async throws -> [Asset]) async throws -> [Asset] {
         if let existing = assetTasks[key] {
             return try await existing.value

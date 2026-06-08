@@ -47,6 +47,59 @@ struct ImmichClient: Sendable {
         return try await getBytes(path: path)
     }
 
+    // MARK: - Write
+
+    struct UploadResult: Sendable {
+        let id: String
+        let isDuplicate: Bool
+    }
+
+    // Uploads a single file as a new asset. Immich dedups by checksum, so an
+    // identical file returns status "duplicate" with the existing asset's id —
+    // surfaced here so callers can still link it to an album.
+    func uploadAsset(filename: String, data: Data, createdAt: String, modifiedAt: String) async throws -> UploadResult {
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var request = try makeRequest(path: "/api/assets")
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        var body = Data()
+        func field(_ name: String, _ value: String) {
+            body.appendString("--\(boundary)\r\n")
+            body.appendString("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n")
+            body.appendString("\(value)\r\n")
+        }
+        field("deviceAssetId", "immich-in-finder-\(UUID().uuidString)")
+        field("deviceId", "immich-in-finder")
+        field("fileCreatedAt", createdAt)
+        field("fileModifiedAt", modifiedAt)
+        body.appendString("--\(boundary)\r\n")
+        body.appendString("Content-Disposition: form-data; name=\"assetData\"; filename=\"\(filename)\"\r\n")
+        body.appendString("Content-Type: application/octet-stream\r\n\r\n")
+        body.append(data)
+        body.appendString("\r\n--\(boundary)--\r\n")
+        request.httpBody = body
+
+        let (responseData, response) = try await session.data(for: request)
+        try Self.ensureOK(response, path: "/api/assets")
+        let decoded = try JSONDecoder().decode(UploadResponse.self, from: responseData)
+        return UploadResult(id: decoded.id, isDuplicate: decoded.status == "duplicate")
+    }
+
+    func addAssets(albumID: String, assetIDs: [String]) async throws {
+        _ = try await sendJSON(method: "PUT", path: "/api/albums/\(albumID)/assets", body: AssetIDsRequest(ids: assetIDs))
+    }
+
+    func createAlbum(name: String) async throws -> AlbumSummary {
+        let data = try await sendJSON(method: "POST", path: "/api/albums", body: CreateAlbumRequest(albumName: name, assetIds: []))
+        return try JSONDecoder().decode(AlbumSummary.self, from: data)
+    }
+
+    func trashAssets(assetIDs: [String]) async throws {
+        _ = try await sendJSON(method: "DELETE", path: "/api/assets", body: TrashRequest(ids: assetIDs, force: false))
+    }
+
     func searchMetadata(takenAfter: String?, takenBefore: String?, page: Int, size: Int, order: String) async throws -> SearchPage {
         let body = MetadataSearchRequest(takenAfter: takenAfter, takenBefore: takenBefore, page: page, size: size, order: order)
         let response: SearchResponse = try await postJSON(path: "/api/search/metadata", body: body)
@@ -174,14 +227,22 @@ struct ImmichClient: Sendable {
     }
 
     private func postJSON<Body: Encodable, T: Decodable>(path: String, body: Body) async throws -> T {
+        let data = try await sendJSON(method: "POST", path: path, body: body)
+        return try JSONDecoder().decode(T.self, from: data)
+    }
+
+    // Sends a JSON body with an arbitrary method and returns the raw response
+    // data (callers decode it or ignore it). Used by POST/PUT/DELETE writes.
+    @discardableResult
+    private func sendJSON<Body: Encodable>(method: String, path: String, body: Body) async throws -> Data {
         var request = try makeRequest(path: path)
-        request.httpMethod = "POST"
+        request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.httpBody = try JSONEncoder().encode(body)
         let (data, response) = try await session.data(for: request)
         try Self.ensureOK(response, path: path)
-        return try JSONDecoder().decode(T.self, from: data)
+        return data
     }
 
     private func getBytes(path: String) async throws -> Data {
@@ -198,5 +259,11 @@ struct ImmichClient: Sendable {
         guard (200...299).contains(http.statusCode) else {
             throw ImmichError.httpStatus(path: path, code: http.statusCode)
         }
+    }
+}
+
+private extension Data {
+    mutating func appendString(_ string: String) {
+        append(Data(string.utf8))
     }
 }
