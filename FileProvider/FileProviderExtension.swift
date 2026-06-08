@@ -219,6 +219,9 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
     // Everywhere else (Timeline, root) is read-only.
     func createItem(basedOn itemTemplate: NSFileProviderItem, fields: NSFileProviderItemFields, contents url: URL?, options: NSFileProviderCreateItemOptions = [], request: NSFileProviderRequest, completionHandler: @escaping (NSFileProviderItem?, NSFileProviderItemFields, Bool, Error?) -> Void) -> Progress {
         nonisolated(unsafe) let completionHandler = completionHandler
+        // domain is an immutable reference set once in init and only used to
+        // build a thread-safe NSFileProviderManager, so it is safe to cross into
+        // the Tasks below; the annotation just opts out of region-isolation.
         nonisolated(unsafe) let domain = self.domain
         let progress = Progress(totalUnitCount: 1)
         guard let client, let cache else {
@@ -238,7 +241,12 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     let album = try await client.createAlbum(name: filename)
                     await cache.invalidateAlbumList()
                     fileProviderLog.log("created album \(album.albumID, privacy: .public)")
-                    completionHandler(AlbumItem(album: album, filename: album.albumName), [], false, nil)
+                    // Disambiguate against the refreshed list so the returned name
+                    // matches what enumeration will report for the same album.
+                    let albums = try await cache.albumList()
+                    let counts = nameCounts(albums.map { $0.albumName })
+                    let name = disambiguatedName(base: album.albumName, id: album.albumID, counts: counts)
+                    completionHandler(AlbumItem(album: album, filename: name), [], false, nil)
                     Self.signalChange(domain: domain, container: NSFileProviderItemIdentifier(rawValue: "section:albums"))
                 } catch {
                     fileProviderLog.error("createAlbum failed: \(error.localizedDescription, privacy: .public)")
@@ -255,7 +263,6 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
         }
         let createdAt = Self.isoString(itemTemplate.creationDate ?? nil)
         let modifiedAt = Self.isoString(itemTemplate.contentModificationDate ?? nil)
-        let contentType = itemTemplate.contentType
         Task {
             do {
                 let data = try Data(contentsOf: url)
@@ -263,16 +270,17 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 try await client.addAssets(albumID: albumID, assetIDs: [result.id])
                 await cache.invalidate(album: albumID)
                 fileProviderLog.log("uploaded \(result.id, privacy: .public) (duplicate: \(result.isDuplicate, privacy: .public)) → album \(albumID, privacy: .public)")
-                let asset = Asset(
-                    assetID: result.id,
-                    type: Self.assetType(for: contentType),
-                    originalFileName: filename,
-                    checksum: nil,
-                    fileCreatedAt: createdAt,
-                    fileModifiedAt: modifiedAt,
-                    exifInfo: ExifInfo(fileSizeInByte: Int64(data.count))
-                )
-                completionHandler(ImmichItem(asset: asset, location: .album(id: albumID), filename: filename), [], false, nil)
+                // Return the asset as the server now reports it, so the item's
+                // filename is disambiguated and its content version (checksum)
+                // matches enumeration — avoiding a ghost entry and an immediate
+                // redundant re-download of the file we just uploaded.
+                let siblings = try await cache.assets(album: albumID)
+                guard let resolved = resolveAsset(result.id, in: siblings) else {
+                    completionHandler(nil, [], false, Self.error(.noSuchItem))
+                    progress.completedUnitCount = 1
+                    return
+                }
+                completionHandler(ImmichItem(asset: resolved.asset, location: .album(id: albumID), filename: resolved.filename), [], false, nil)
                 Self.signalChange(domain: domain, container: NSFileProviderItemIdentifier(rawValue: "album:\(albumID)"))
             } catch {
                 fileProviderLog.error("upload failed for \(filename, privacy: .public): \(error.localizedDescription, privacy: .public)")
@@ -438,14 +446,6 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
         case .month(let yearMonth):
             return NSFileProviderItemIdentifier(rawValue: "month:\(yearMonth)")
         }
-    }
-
-    private static func assetType(for type: UTType?) -> AssetType {
-        guard let type else { return .other }
-        if type.conforms(to: .image) { return .image }
-        if type.conforms(to: .movie) || type.conforms(to: .audiovisualContent) { return .video }
-        if type.conforms(to: .audio) { return .audio }
-        return .other
     }
 }
 
