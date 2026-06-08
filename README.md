@@ -83,5 +83,7 @@ The extension's `Info.plist` **must** include `NSExtensionFileProviderDocumentGr
 - [x] Swift 6 strict-concurrency hardening of the extension
 - [x] Write support, phase 1: upload into albums, create albums, delete to trash
 - [x] Write support, phase 2: rename albums, move assets between albums
+- [x] Refresh the affected container after a local write (`signalEnumerator`)
+- [ ] Full two-way sync: pull remote changes via `enumerateChanges` + sync anchors
 - [ ] People (facial recognition) and Places (geocoding)
 - [ ] Favorites

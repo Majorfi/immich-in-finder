@@ -74,8 +74,10 @@ enum ItemID {
 final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
     private let client: ImmichClient?
     private let cache: ImmichCache?
+    private let domain: NSFileProviderDomain
 
     required init(domain: NSFileProviderDomain) {
+        self.domain = domain
         if let credentials = CredentialStore.load() {
             let immichClient = ImmichClient(baseURL: credentials.baseURL, apiKey: credentials.apiKey)
             self.client = immichClient
@@ -217,6 +219,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
     // Everywhere else (Timeline, root) is read-only.
     func createItem(basedOn itemTemplate: NSFileProviderItem, fields: NSFileProviderItemFields, contents url: URL?, options: NSFileProviderCreateItemOptions = [], request: NSFileProviderRequest, completionHandler: @escaping (NSFileProviderItem?, NSFileProviderItemFields, Bool, Error?) -> Void) -> Progress {
         nonisolated(unsafe) let completionHandler = completionHandler
+        nonisolated(unsafe) let domain = self.domain
         let progress = Progress(totalUnitCount: 1)
         guard let client, let cache else {
             completionHandler(nil, [], false, Self.error(.notAuthenticated))
@@ -236,6 +239,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     await cache.invalidateAlbumList()
                     fileProviderLog.log("created album \(album.albumID, privacy: .public)")
                     completionHandler(AlbumItem(album: album, filename: album.albumName), [], false, nil)
+                    Self.signalChange(domain: domain, container: NSFileProviderItemIdentifier(rawValue: "section:albums"))
                 } catch {
                     fileProviderLog.error("createAlbum failed: \(error.localizedDescription, privacy: .public)")
                     completionHandler(nil, [], false, error)
@@ -269,6 +273,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     exifInfo: ExifInfo(fileSizeInByte: Int64(data.count))
                 )
                 completionHandler(ImmichItem(asset: asset, location: .album(id: albumID), filename: filename), [], false, nil)
+                Self.signalChange(domain: domain, container: NSFileProviderItemIdentifier(rawValue: "album:\(albumID)"))
             } catch {
                 fileProviderLog.error("upload failed for \(filename, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 completionHandler(nil, [], false, error)
@@ -284,6 +289,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
     // not keep retrying metadata it cannot push to Immich.
     func modifyItem(_ item: NSFileProviderItem, baseVersion version: NSFileProviderItemVersion, changedFields: NSFileProviderItemFields, contents newContents: URL?, options: NSFileProviderModifyItemOptions = [], request: NSFileProviderRequest, completionHandler: @escaping (NSFileProviderItem?, NSFileProviderItemFields, Bool, Error?) -> Void) -> Progress {
         nonisolated(unsafe) let completionHandler = completionHandler
+        nonisolated(unsafe) let domain = self.domain
         let progress = Progress(totalUnitCount: 1)
         guard let client, let cache else {
             completionHandler(nil, [], false, Self.error(.notAuthenticated))
@@ -299,6 +305,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     await cache.invalidateAlbumList()
                     fileProviderLog.log("renamed album \(albumID, privacy: .public)")
                     completionHandler(AlbumItem(album: album, filename: album.albumName), [], false, nil)
+                    Self.signalChange(domain: domain, container: NSFileProviderItemIdentifier(rawValue: "section:albums"))
                 } catch {
                     fileProviderLog.error("renameAlbum failed: \(error.localizedDescription, privacy: .public)")
                     completionHandler(nil, [], false, error)
@@ -330,6 +337,8 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     }
                     fileProviderLog.log("moved asset \(assetID, privacy: .public): \(srcAlbum, privacy: .public) -> \(destAlbum, privacy: .public)")
                     completionHandler(ImmichItem(asset: resolved.asset, location: .album(id: destAlbum), filename: resolved.filename), [], false, nil)
+                    Self.signalChange(domain: domain, container: NSFileProviderItemIdentifier(rawValue: "album:\(srcAlbum)"))
+                    Self.signalChange(domain: domain, container: NSFileProviderItemIdentifier(rawValue: "album:\(destAlbum)"))
                 } catch {
                     fileProviderLog.error("move failed for \(assetID, privacy: .public): \(error.localizedDescription, privacy: .public)")
                     completionHandler(nil, [], false, error)
@@ -349,6 +358,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
     // Only assets are deletable; album/section folders are read-only here.
     func deleteItem(identifier: NSFileProviderItemIdentifier, baseVersion version: NSFileProviderItemVersion, options: NSFileProviderDeleteItemOptions = [], request: NSFileProviderRequest, completionHandler: @escaping (Error?) -> Void) -> Progress {
         nonisolated(unsafe) let completionHandler = completionHandler
+        nonisolated(unsafe) let domain = self.domain
         let progress = Progress(totalUnitCount: 1)
         guard let client, let cache else {
             completionHandler(Self.error(.notAuthenticated))
@@ -369,6 +379,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 }
                 fileProviderLog.log("trashed asset \(ref.assetID, privacy: .public)")
                 completionHandler(nil)
+                Self.signalChange(domain: domain, container: Self.containerIdentifier(for: ref.location))
             } catch {
                 fileProviderLog.error("trash failed for \(ref.assetID, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 completionHandler(error)
@@ -408,6 +419,25 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
 
     private static func isoString(_ date: Date?) -> String {
         uploadDateFormatter.string(from: date ?? Date())
+    }
+
+    // Tells the system a container's contents changed so it re-enumerates and
+    // a currently-open Finder window refreshes right after a local write.
+    private static func signalChange(domain: NSFileProviderDomain, container: NSFileProviderItemIdentifier) {
+        NSFileProviderManager(for: domain)?.signalEnumerator(for: container) { error in
+            if let error {
+                fileProviderLog.error("signalEnumerator failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
+    private static func containerIdentifier(for location: AssetLocation) -> NSFileProviderItemIdentifier {
+        switch location {
+        case .album(let id):
+            return NSFileProviderItemIdentifier(rawValue: "album:\(id)")
+        case .month(let yearMonth):
+            return NSFileProviderItemIdentifier(rawValue: "month:\(yearMonth)")
+        }
     }
 
     private static func assetType(for type: UTType?) -> AssetType {
