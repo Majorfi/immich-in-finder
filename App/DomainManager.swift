@@ -21,4 +21,10 @@ enum DomainManager {
     static func unregister() async throws {
         try await NSFileProviderManager.remove(domain)
     }
+
+    // Ask Finder to re-enumerate the root so a change to the visible sections
+    // takes effect without re-mounting the domain.
+    static func reloadRoot() {
+        NSFileProviderManager(for: domain)?.signalEnumerator(for: .rootContainer) { _ in }
+    }
 }

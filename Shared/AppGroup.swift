@@ -12,7 +12,7 @@ enum AppGroup {
 
     enum DefaultsKey {
         static let baseURL = "immich.baseURL"
-        static let albumID = "immich.albumID"
+        static let visibleSections = "immich.visibleSections"
     }
 
     static var defaults: UserDefaults? {

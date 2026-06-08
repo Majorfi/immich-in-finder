@@ -82,6 +82,17 @@ extension AssetLocation {
     }
 }
 
+extension SectionKind {
+    // SectionKind lives in Shared (no FileProvider import), so the mapping to the
+    // identifier grammar is defined here, next to ItemID.
+    var itemID: ItemID {
+        switch self {
+        case .albums: return .albumsSection
+        case .timeline: return .timelineSection
+        }
+    }
+}
+
 enum EnumeratedContainer {
     case sections
     case albums
@@ -117,10 +128,11 @@ final class ItemEnumerator: NSObject, NSFileProviderEnumerator {
             do {
                 switch container {
                 case .sections:
-                    observer.didEnumerate([
-                        SectionItem(id: "section:albums", name: "Albums"),
-                        SectionItem(id: "section:timeline", name: "Timeline")
-                    ])
+                    let visible = VisibleSections.load()
+                    let items = SectionKind.allCases
+                        .filter { visible.contains($0) }
+                        .map { SectionItem(id: $0.itemID.identifier.rawValue, name: $0.displayName) }
+                    observer.didEnumerate(items)
                     observer.finishEnumerating(upTo: nil)
                 case .albums:
                     let albums = try await cache.albumList()

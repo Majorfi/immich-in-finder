@@ -3,7 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @State private var baseURL = ""
     @State private var apiKey = ""
-    @State private var albumID = ""
+    @State private var visibleSections: Set<SectionKind> = Set(SectionKind.allCases)
     @State private var status = ""
     @State private var isWorking = false
     @State private var isEnabled = false
@@ -12,22 +12,33 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Immich Drive").font(.title2).bold()
-                Text("Read-only Finder access to one Immich album.")
+                Text("Browse your Immich library in Finder.")
                     .font(.subheadline).foregroundStyle(.secondary)
             }
 
             Form {
                 TextField("Server URL", text: $baseURL, prompt: Text("https://photos.example.com"))
                 SecureField("API key", text: $apiKey)
-                TextField("Album ID", text: $albumID, prompt: Text("optional — first album if empty"))
             }
             .formStyle(.columns)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Visible folders").font(.subheadline).foregroundStyle(.secondary)
+                ForEach(SectionKind.allCases, id: \.self) { kind in
+                    Toggle(kind.displayName, isOn: Binding(
+                        get: { visibleSections.contains(kind) },
+                        set: { isOn in
+                            if isOn { visibleSections.insert(kind) } else { visibleSections.remove(kind) }
+                        }
+                    ))
+                }
+            }
 
             HStack(spacing: 10) {
                 Button(isEnabled ? "Update" : "Connect & Enable in Finder") {
                     Task { await enable() }
                 }
-                .disabled(isWorking || baseURL.isEmpty || apiKey.isEmpty)
+                .disabled(isWorking || baseURL.isEmpty || apiKey.isEmpty || visibleSections.isEmpty)
 
                 if isEnabled {
                     Button("Disable", role: .destructive) {
@@ -56,8 +67,8 @@ struct ContentView: View {
         if let credentials = CredentialStore.load() {
             baseURL = credentials.baseURL.absoluteString
             apiKey = credentials.apiKey
-            albumID = credentials.albumID ?? ""
         }
+        visibleSections = VisibleSections.load()
         isEnabled = await DomainManager.isRegistered()
     }
 
@@ -77,9 +88,11 @@ struct ContentView: View {
             return
         }
 
-        CredentialStore.save(baseURL: baseURL, apiKey: apiKey, albumID: albumID)
+        CredentialStore.save(baseURL: baseURL, apiKey: apiKey)
+        VisibleSections.save(visibleSections)
         do {
             try await DomainManager.register()
+            DomainManager.reloadRoot()
             isEnabled = true
             status += "\n✓ Enabled — open Finder and look for “Immich” in the sidebar."
         } catch {

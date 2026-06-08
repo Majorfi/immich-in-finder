@@ -4,21 +4,14 @@ import Security
 struct ImmichCredentials: Sendable {
     let baseURL: URL
     let apiKey: String
-    let albumID: String?
 }
 
 enum CredentialStore {
     private static let keychainService = "app.quub.immichdrive"
     private static let keychainAccount = "immich-api-key"
 
-    static func save(baseURL: String, apiKey: String, albumID: String?) {
-        let defaults = AppGroup.defaults
-        defaults?.set(baseURL, forKey: AppGroup.DefaultsKey.baseURL)
-        if let albumID, albumID.isEmpty == false {
-            defaults?.set(albumID, forKey: AppGroup.DefaultsKey.albumID)
-        } else {
-            defaults?.removeObject(forKey: AppGroup.DefaultsKey.albumID)
-        }
+    static func save(baseURL: String, apiKey: String) {
+        AppGroup.defaults?.set(baseURL, forKey: AppGroup.DefaultsKey.baseURL)
         saveAPIKey(apiKey)
     }
 
@@ -28,13 +21,11 @@ enum CredentialStore {
               let apiKey = loadAPIKey(), apiKey.isEmpty == false else {
             return nil
         }
-        let albumID = AppGroup.defaults?.string(forKey: AppGroup.DefaultsKey.albumID)
-        return ImmichCredentials(baseURL: baseURL, apiKey: apiKey, albumID: albumID)
+        return ImmichCredentials(baseURL: baseURL, apiKey: apiKey)
     }
 
     static func clear() {
         AppGroup.defaults?.removeObject(forKey: AppGroup.DefaultsKey.baseURL)
-        AppGroup.defaults?.removeObject(forKey: AppGroup.DefaultsKey.albumID)
         deleteAPIKey()
     }
 
