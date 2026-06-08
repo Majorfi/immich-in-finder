@@ -1,0 +1,67 @@
+name: ImmichDrive
+options:
+  bundleIdPrefix: app.quub
+  deploymentTarget:
+    macOS: "13.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    DEVELOPMENT_TEAM: QZSF4W9PK3
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+    PRODUCT_NAME: "$(TARGET_NAME)"
+    ENABLE_HARDENED_RUNTIME: "YES"
+targets:
+  ImmichDrive:
+    type: application
+    platform: macOS
+    sources:
+      - path: App
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.quub.immichdrive
+        CODE_SIGN_ENTITLEMENTS: App/App.entitlements
+    info:
+      path: App/Info.generated.plist
+      properties:
+        CFBundleName: ImmichDrive
+        CFBundleDisplayName: Immich Drive
+        CFBundlePackageType: APPL
+        LSMinimumSystemVersion: "13.0"
+        NSHumanReadableCopyright: ""
+    dependencies:
+      - target: ImmichDriveFileProvider
+        embed: true
+      - sdk: FileProvider.framework
+  ImmichDriveFileProvider:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: FileProvider
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.quub.immichdrive.FileProvider
+        CODE_SIGN_ENTITLEMENTS: FileProvider/FileProvider.entitlements
+    info:
+      path: FileProvider/Info.generated.plist
+      properties:
+        CFBundleName: ImmichDriveFileProvider
+        CFBundleDisplayName: Immich Drive File Provider
+        NSExtension:
+          NSExtensionFileProviderDocumentGroup: QZSF4W9PK3.app.quub.immichdrive
+          NSExtensionFileProviderSupportsEnumeration: true
+          NSExtensionPointIdentifier: com.apple.fileprovider-nonui
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).FileProviderExtension
+    dependencies:
+      - sdk: FileProvider.framework
+schemes:
+  ImmichDrive:
+    build:
+      targets:
+        ImmichDrive: all
+    run:
+      config: Debug
