@@ -25,7 +25,15 @@ struct SearchPage: Sendable {
 struct ImmichClient: Sendable {
     let baseURL: URL
     let apiKey: String
-    private let session: URLSession = .shared
+    private let session: URLSession
+
+    // session is injectable so tests can drive a mocked URLProtocol; production
+    // callers get the shared session.
+    init(baseURL: URL, apiKey: String, session: URLSession = .shared) {
+        self.baseURL = baseURL
+        self.apiKey = apiKey
+        self.session = session
+    }
 
     func listAlbums() async throws -> [AlbumSummary] {
         try await getJSON(path: "/api/albums")

@@ -209,18 +209,18 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
     private let cache: ImmichCache?
     private let domain: NSFileProviderDomain
 
-    required init(domain: NSFileProviderDomain) {
+    required convenience init(domain: NSFileProviderDomain) {
+        let client = CredentialStore.load().map { ImmichClient(baseURL: $0.baseURL, apiKey: $0.apiKey) }
+        self.init(domain: domain, client: client, cache: client.map(ImmichCache.init(client:)))
+        fileProviderLog.log("init — credentials present: \(client != nil, privacy: .public)")
+    }
+
+    // Designated initializer; also the seam tests use to inject a mocked client.
+    init(domain: NSFileProviderDomain, client: ImmichClient?, cache: ImmichCache?) {
         self.domain = domain
-        if let credentials = CredentialStore.load() {
-            let immichClient = ImmichClient(baseURL: credentials.baseURL, apiKey: credentials.apiKey)
-            self.client = immichClient
-            self.cache = ImmichCache(client: immichClient)
-        } else {
-            self.client = nil
-            self.cache = nil
-        }
+        self.client = client
+        self.cache = cache
         super.init()
-        fileProviderLog.log("init — credentials present: \(self.client != nil, privacy: .public)")
     }
 
     func invalidate() {}
