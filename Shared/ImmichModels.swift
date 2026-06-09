@@ -83,6 +83,7 @@ struct MetadataSearchRequest: Encodable, Sendable {
     let albumIds: [String]?
     let personIds: [String]?
     let tagIds: [String]?
+    let isFavorite: Bool?
     let city: String?
     let country: String?
     let page: Int

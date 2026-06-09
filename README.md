@@ -88,5 +88,5 @@ The extension's `Info.plist` **must** include `NSExtensionFileProviderDocumentGr
 - [x] `People/` view — named people as folders (facial recognition)
 - [x] `Places/` view — `Country/City/` hierarchy (geocoding)
 - [x] `Tags/` view — tags as folders (`tagIds`)
+- [x] `Favorites/` view — favorited assets, flat (`isFavorite`)
 - [ ] Full two-way sync: pull remote changes via `enumerateChanges` + sync anchors
-- [ ] Favorites

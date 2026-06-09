@@ -111,6 +111,13 @@ actor ImmichCache {
         }
     }
 
+    func favoriteAssets() async throws -> [Asset] {
+        let client = self.client
+        return try await cachedAssets(key: "favorites") {
+            try await client.searchAllFavorites()
+        }
+    }
+
     // Write operations drop the memoized fetch for the affected container so the
     // next enumeration re-reads it from the server instead of stale data.
     func invalidateAlbumList() {
@@ -135,6 +142,10 @@ actor ImmichCache {
 
     func invalidate(tag tagID: String) {
         assetTasks["tag:\(tagID)"] = nil
+    }
+
+    func invalidateFavorites() {
+        assetTasks["favorites"] = nil
     }
 
     private func cachedAssets(key: String, fetch: @Sendable @escaping () async throws -> [Asset]) async throws -> [Asset] {
@@ -165,6 +176,8 @@ extension AssetLocation {
             return try await cache.assets(country: country, city: city)
         case .tag(let id):
             return try await cache.assets(tag: id)
+        case .favorite:
+            return try await cache.favoriteAssets()
         }
     }
 }
@@ -179,6 +192,7 @@ extension SectionKind {
         case .people: return .peopleSection
         case .places: return .placesSection
         case .tags: return .tagsSection
+        case .favorites: return .favoritesSection
         }
     }
 }
@@ -197,6 +211,7 @@ enum EnumeratedContainer {
     case place(country: String, city: String)
     case tags
     case tag(id: String)
+    case favorites
 }
 
 final class ItemEnumerator: NSObject, NSFileProviderEnumerator {
@@ -306,6 +321,11 @@ final class ItemEnumerator: NSObject, NSFileProviderEnumerator {
                     let assets = try await cache.assets(tag: id)
                     fileProviderLog.log("tag \(id, privacy: .public): \(assets.count, privacy: .public) assets")
                     observer.didEnumerate(immichItems(from: assets, location: .tag(id: id)))
+                    observer.finishEnumerating(upTo: nil)
+                case .favorites:
+                    let assets = try await cache.favoriteAssets()
+                    fileProviderLog.log("enumerated \(assets.count, privacy: .public) favorites")
+                    observer.didEnumerate(immichItems(from: assets, location: .favorite))
                     observer.finishEnumerating(upTo: nil)
                 }
             } catch {

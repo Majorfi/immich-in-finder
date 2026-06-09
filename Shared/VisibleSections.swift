@@ -9,6 +9,7 @@ enum SectionKind: String, CaseIterable, Sendable {
     case people
     case places
     case tags
+    case favorites
 
     var displayName: String {
         switch self {
@@ -17,6 +18,7 @@ enum SectionKind: String, CaseIterable, Sendable {
         case .people: return "People"
         case .places: return "Places"
         case .tags: return "Tags"
+        case .favorites: return "Favorites"
         }
     }
 }

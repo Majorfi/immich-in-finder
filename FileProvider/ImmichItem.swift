@@ -8,6 +8,7 @@ enum AssetLocation {
     case person(id: String)
     case place(country: String, city: String)
     case tag(id: String)
+    case favorite
 }
 
 func nameCounts(_ names: [String]) -> [String: Int] {
@@ -76,6 +77,8 @@ final class ImmichItem: NSObject, NSFileProviderItem {
             return ItemID.placeAsset(country: country, city: city, assetID: asset.assetID).identifier
         case .tag(let id):
             return ItemID.tagAsset(tagID: id, assetID: asset.assetID).identifier
+        case .favorite:
+            return ItemID.favoriteAsset(assetID: asset.assetID).identifier
         }
     }
 
@@ -91,6 +94,8 @@ final class ImmichItem: NSObject, NSFileProviderItem {
             return ItemID.city(country: country, city: city).identifier
         case .tag(let id):
             return ItemID.tag(id).identifier
+        case .favorite:
+            return ItemID.favoritesSection.identifier
         }
     }
 
@@ -118,7 +123,7 @@ final class ImmichItem: NSObject, NSFileProviderItem {
         switch location {
         case .album:
             return [.allowsReading, .allowsEvicting, .allowsDeleting, .allowsReparenting]
-        case .month, .person, .place, .tag:
+        case .month, .person, .place, .tag, .favorite:
             return [.allowsReading, .allowsEvicting, .allowsDeleting]
         }
     }

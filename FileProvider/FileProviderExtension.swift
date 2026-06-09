@@ -22,6 +22,8 @@ enum ItemID {
     case tagsSection
     case tag(String)
     case tagAsset(tagID: String, assetID: String)
+    case favoritesSection
+    case favoriteAsset(assetID: String)
     case other
 
     init(_ identifier: NSFileProviderItemIdentifier) {
@@ -56,6 +58,14 @@ enum ItemID {
         }
         if raw.hasPrefix("tag:") {
             self = .tag(String(raw.dropFirst("tag:".count)))
+            return
+        }
+        if raw == "section:favorites" {
+            self = .favoritesSection
+            return
+        }
+        if raw.hasPrefix("fasset:") {
+            self = .favoriteAsset(assetID: String(raw.dropFirst("fasset:".count)))
             return
         }
         if raw.hasPrefix("country:") {
@@ -136,6 +146,8 @@ enum ItemID {
             return (assetID, .place(country: country, city: city))
         case .tagAsset(let tagID, let assetID):
             return (assetID, .tag(id: tagID))
+        case .favoriteAsset(let assetID):
+            return (assetID, .favorite)
         default:
             return nil
         }
@@ -182,6 +194,10 @@ enum ItemID {
             return NSFileProviderItemIdentifier(rawValue: "tag:\(id)")
         case .tagAsset(let tagID, let assetID):
             return NSFileProviderItemIdentifier(rawValue: "tagasset:\(tagID):\(assetID)")
+        case .favoritesSection:
+            return NSFileProviderItemIdentifier(rawValue: "section:favorites")
+        case .favoriteAsset(let assetID):
+            return NSFileProviderItemIdentifier(rawValue: "fasset:\(assetID)")
         case .other:
             return NSFileProviderItemIdentifier(rawValue: "")
         }
@@ -250,6 +266,8 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
             completionHandler(SectionItem(id: ItemID.placesSection.identifier.rawValue, name: SectionKind.places.displayName), nil)
         case .tagsSection:
             completionHandler(SectionItem(id: ItemID.tagsSection.identifier.rawValue, name: SectionKind.tags.displayName), nil)
+        case .favoritesSection:
+            completionHandler(SectionItem(id: ItemID.favoritesSection.identifier.rawValue, name: SectionKind.favorites.displayName), nil)
         case .year(let year):
             completionHandler(YearItem(year: year), nil)
         case .month(let yearMonth):
@@ -318,7 +336,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 progress.completedUnitCount = 1
             }
             return progress
-        case .asset, .timelineAsset, .personAsset, .placeAsset, .tagAsset, .other:
+        case .asset, .timelineAsset, .personAsset, .placeAsset, .tagAsset, .favoriteAsset, .other:
             completionHandler(nil, Self.error(.noSuchItem))
         }
         progress.completedUnitCount = 1
@@ -388,7 +406,9 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
             return ItemEnumerator(client: client, cache: cache, container: .tags)
         case .tag(let id):
             return ItemEnumerator(client: client, cache: cache, container: .tag(id: id))
-        case .asset, .timelineAsset, .personAsset, .placeAsset, .tagAsset:
+        case .favoritesSection:
+            return ItemEnumerator(client: client, cache: cache, container: .favorites)
+        case .asset, .timelineAsset, .personAsset, .placeAsset, .tagAsset, .favoriteAsset:
             throw Self.error(.noSuchItem)
         }
     }
@@ -568,6 +588,8 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     await cache.invalidate(country: country, city: city)
                 case .tag(let id):
                     await cache.invalidate(tag: id)
+                case .favorite:
+                    await cache.invalidateFavorites()
                 }
                 fileProviderLog.log("trashed asset \(ref.assetID, privacy: .public)")
                 completionHandler(nil)
@@ -635,6 +657,8 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
             return ItemID.city(country: country, city: city).identifier
         case .tag(let id):
             return ItemID.tag(id).identifier
+        case .favorite:
+            return ItemID.favoritesSection.identifier
         }
     }
 
