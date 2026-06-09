@@ -9,6 +9,7 @@ final class ImmichClientWriteIntegrationTests: XCTestCase {
     private var client: ImmichClient!
     private var albumsToDelete: [String] = []
     private var assetsToPurge: [String] = []
+    private var tempFiles: [URL] = []
 
     // 1x1 PNG; trailing bytes are appended per-test to make the checksum unique.
     private static let basePNG = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")!
@@ -36,11 +37,20 @@ final class ImmichClientWriteIntegrationTests: XCTestCase {
         for id in albumsToDelete {
             try? await client.deleteAlbum(id: id)
         }
+        for url in tempFiles { try? FileManager.default.removeItem(at: url) }
         albumsToDelete = []
         assetsToPurge = []
+        tempFiles = []
     }
 
-    private func uniqueBytes(_ tag: String) -> Data { Self.basePNG + Data(tag.utf8) }
+    // A temp file holding a per-test-unique 1x1 PNG, so its checksum never
+    // collides with real library assets.
+    private func uniqueFile(_ tag: String) throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).png")
+        try (Self.basePNG + Data(tag.utf8)).write(to: url)
+        tempFiles.append(url)
+        return url
+    }
 
     // Exercises the full write surface the extension uses: create album, upload,
     // add, move (add+remove), rename, trash.
@@ -53,7 +63,7 @@ final class ImmichClientWriteIntegrationTests: XCTestCase {
         let albumB = try await client.createAlbum(name: "FPTest B \(tag)")
         albumsToDelete.append(albumB.albumID)
 
-        let upload = try await client.uploadAsset(filename: "fptest-\(tag).png", data: uniqueBytes(tag), createdAt: now, modifiedAt: now)
+        let upload = try await client.uploadAsset(filename: "fptest-\(tag).png", fileURL: try uniqueFile(tag), createdAt: now, modifiedAt: now)
         assetsToPurge.append(upload.id)
         XCTAssertFalse(upload.isDuplicate)
 
@@ -85,13 +95,13 @@ final class ImmichClientWriteIntegrationTests: XCTestCase {
     func testDuplicateUploadReportsExistingAsset() async throws {
         let tag = String(UUID().uuidString.prefix(8))
         let now = Self.isoFormatter.string(from: Date())
-        let bytes = uniqueBytes(tag)
+        let file = try uniqueFile(tag) // same bytes reused for both uploads
 
-        let first = try await client.uploadAsset(filename: "dup-\(tag).png", data: bytes, createdAt: now, modifiedAt: now)
+        let first = try await client.uploadAsset(filename: "dup-\(tag).png", fileURL: file, createdAt: now, modifiedAt: now)
         assetsToPurge.append(first.id)
         XCTAssertFalse(first.isDuplicate, "first upload of fresh bytes is not a duplicate")
 
-        let second = try await client.uploadAsset(filename: "dup2-\(tag).png", data: bytes, createdAt: now, modifiedAt: now)
+        let second = try await client.uploadAsset(filename: "dup2-\(tag).png", fileURL: file, createdAt: now, modifiedAt: now)
         XCTAssertTrue(second.isDuplicate, "identical bytes should be reported as a duplicate")
         XCTAssertEqual(second.id, first.id, "a duplicate resolves to the existing asset id")
     }

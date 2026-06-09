@@ -77,13 +77,17 @@ final class ImmichClientMockTests: XCTestCase {
     // MARK: write methods
 
     func testUploadAssetParsesCreatedAndDuplicate() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).bin")
+        try Data([0x1, 0x2]).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
         let created = MockClient.make(json: #"{"id":"new","status":"created"}"#)
-        let r1 = try await created.uploadAsset(filename: "a.png", data: Data([0x1, 0x2]), createdAt: "t", modifiedAt: "t")
+        let r1 = try await created.uploadAsset(filename: "a.png", fileURL: url, createdAt: "t", modifiedAt: "t")
         XCTAssertEqual(r1.id, "new")
         XCTAssertFalse(r1.isDuplicate)
 
         let dup = MockClient.make(json: #"{"id":"old","status":"duplicate"}"#)
-        let r2 = try await dup.uploadAsset(filename: "a.png", data: Data([0x1]), createdAt: "t", modifiedAt: "t")
+        let r2 = try await dup.uploadAsset(filename: "a.png", fileURL: url, createdAt: "t", modifiedAt: "t")
         XCTAssertTrue(r2.isDuplicate)
     }
 

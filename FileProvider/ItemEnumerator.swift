@@ -272,7 +272,7 @@ final class ItemEnumerator: NSObject, NSFileProviderEnumerator {
                     observer.finishEnumerating(upTo: nil)
                 }
             } catch {
-                observer.finishEnumeratingWithError(error)
+                observer.finishEnumeratingWithError(fileProviderError(from: error))
             }
         }
     }

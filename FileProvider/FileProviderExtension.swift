@@ -204,6 +204,32 @@ enum ItemID {
     }
 }
 
+// Maps a thrown error to the closest NSFileProviderError so the Finder shows a
+// sane message and retries appropriately, instead of an opaque failure. Unknown
+// errors pass through unchanged.
+func fileProviderError(from error: Error) -> Error {
+    let code: NSFileProviderError.Code?
+    if let immich = error as? ImmichError, case .httpStatus(_, let status) = immich {
+        switch status {
+        case 401, 403: code = .notAuthenticated
+        case 404: code = .noSuchItem
+        case 413, 507: code = .insufficientQuota
+        default: code = nil
+        }
+    } else if let urlError = error as? URLError {
+        switch urlError.code {
+        case .notConnectedToInternet, .cannotConnectToHost, .cannotFindHost,
+             .timedOut, .networkConnectionLost, .dnsLookupFailed:
+            code = .serverUnreachable
+        default: code = nil
+        }
+    } else {
+        code = nil
+    }
+    guard let code else { return error }
+    return NSError(domain: NSFileProviderErrorDomain, code: code.rawValue)
+}
+
 final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
     private let client: ImmichClient?
     private let cache: ImmichCache?
@@ -246,7 +272,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     }
                     completionHandler(ImmichItem(asset: resolved.asset, location: ref.location, filename: resolved.filename), nil)
                 } catch {
-                    completionHandler(nil, error)
+                    completionHandler(nil, fileProviderError(from: error))
                 }
                 progress.completedUnitCount = 1
             }
@@ -291,7 +317,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     }
                     completionHandler(Self.personItem(for: person, in: people), nil)
                 } catch {
-                    completionHandler(nil, error)
+                    completionHandler(nil, fileProviderError(from: error))
                 }
                 progress.completedUnitCount = 1
             }
@@ -311,7 +337,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     }
                     completionHandler(Self.tagItem(for: tag, in: tags), nil)
                 } catch {
-                    completionHandler(nil, error)
+                    completionHandler(nil, fileProviderError(from: error))
                 }
                 progress.completedUnitCount = 1
             }
@@ -331,7 +357,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     }
                     completionHandler(Self.albumItem(for: summary, in: albums), nil)
                 } catch {
-                    completionHandler(nil, error)
+                    completionHandler(nil, fileProviderError(from: error))
                 }
                 progress.completedUnitCount = 1
             }
@@ -367,7 +393,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 completionHandler(url, ImmichItem(asset: resolved.asset, location: ref.location, filename: resolved.filename), nil)
             } catch {
                 fileProviderLog.error("fetchContents failed for \(ref.assetID, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                completionHandler(nil, nil, error)
+                completionHandler(nil, nil, fileProviderError(from: error))
             }
             progress.completedUnitCount = 1
         }
@@ -447,7 +473,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     Self.signalChange(domain: domain, container: ItemID.albumsSection.identifier)
                 } catch {
                     fileProviderLog.error("createAlbum failed: \(error.localizedDescription, privacy: .public)")
-                    completionHandler(nil, [], false, error)
+                    completionHandler(nil, [], false, fileProviderError(from: error))
                 }
                 progress.completedUnitCount = 1
             }
@@ -462,8 +488,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
         let modifiedAt = Self.isoString(itemTemplate.contentModificationDate ?? nil)
         Task {
             do {
-                let data = try Data(contentsOf: url)
-                let result = try await client.uploadAsset(filename: filename, data: data, createdAt: createdAt, modifiedAt: modifiedAt)
+                let result = try await client.uploadAsset(filename: filename, fileURL: url, createdAt: createdAt, modifiedAt: modifiedAt)
                 try await client.addAssets(albumID: albumID, assetIDs: [result.id])
                 await cache.invalidate(.album(id: albumID))
                 fileProviderLog.log("uploaded \(result.id, privacy: .public) (duplicate: \(result.isDuplicate, privacy: .public)) → album \(albumID, privacy: .public)")
@@ -481,7 +506,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 Self.signalChange(domain: domain, container: ItemID.album(albumID).identifier)
             } catch {
                 fileProviderLog.error("upload failed for \(filename, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                completionHandler(nil, [], false, error)
+                completionHandler(nil, [], false, fileProviderError(from: error))
             }
             progress.completedUnitCount = 1
         }
@@ -514,7 +539,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     Self.signalChange(domain: domain, container: ItemID.albumsSection.identifier)
                 } catch {
                     fileProviderLog.error("renameAlbum failed: \(error.localizedDescription, privacy: .public)")
-                    completionHandler(nil, [], false, error)
+                    completionHandler(nil, [], false, fileProviderError(from: error))
                 }
                 progress.completedUnitCount = 1
             }
@@ -547,7 +572,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     Self.signalChange(domain: domain, container: ItemID.album(destAlbum).identifier)
                 } catch {
                     fileProviderLog.error("move failed for \(assetID, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                    completionHandler(nil, [], false, error)
+                    completionHandler(nil, [], false, fileProviderError(from: error))
                 }
                 progress.completedUnitCount = 1
             }
@@ -583,7 +608,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 Self.signalChange(domain: domain, container: ref.location.parentItemID.identifier)
             } catch {
                 fileProviderLog.error("trash failed for \(ref.assetID, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                completionHandler(error)
+                completionHandler(fileProviderError(from: error))
             }
             progress.completedUnitCount = 1
         }
@@ -675,7 +700,7 @@ extension FileProviderExtension: NSFileProviderThumbnailing {
                             let data = try await client.downloadThumbnail(assetID: assetID, size: nil)
                             perThumbnailCompletionHandler(identifier, data, nil)
                         } catch {
-                            perThumbnailCompletionHandler(identifier, nil, error)
+                            perThumbnailCompletionHandler(identifier, nil, fileProviderError(from: error))
                         }
                     }
                 }

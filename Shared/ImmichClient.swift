@@ -58,37 +58,68 @@ struct ImmichClient: Sendable {
         let isDuplicate: Bool
     }
 
-    // Uploads a single file as a new asset. Immich dedups by checksum, so an
-    // identical file returns status "duplicate" with the existing asset's id —
-    // surfaced here so callers can still link it to an album.
-    func uploadAsset(filename: String, data: Data, createdAt: String, modifiedAt: String) async throws -> UploadResult {
+    // Uploads a file as a new asset. The multipart envelope is assembled on disk
+    // (the source is streamed in by chunks) and sent with upload(fromFile:), so
+    // the asset is never held in memory — large videos won't blow the heap or
+    // starve the cooperative thread pool. Immich dedups by checksum, so an
+    // identical file returns status "duplicate" with the existing asset's id.
+    func uploadAsset(filename: String, fileURL: URL, createdAt: String, modifiedAt: String) async throws -> UploadResult {
         let boundary = "Boundary-\(UUID().uuidString)"
         var request = try makeRequest(path: "/api/assets")
         request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
-        var body = Data()
-        func field(_ name: String, _ value: String) {
-            body.appendString("--\(boundary)\r\n")
-            body.appendString("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n")
-            body.appendString("\(value)\r\n")
-        }
-        field("deviceAssetId", "immich-in-finder-\(UUID().uuidString)")
-        field("deviceId", "immich-in-finder")
-        field("fileCreatedAt", createdAt)
-        field("fileModifiedAt", modifiedAt)
-        body.appendString("--\(boundary)\r\n")
-        body.appendString("Content-Disposition: form-data; name=\"assetData\"; filename=\"\(filename)\"\r\n")
-        body.appendString("Content-Type: application/octet-stream\r\n\r\n")
-        body.append(data)
-        body.appendString("\r\n--\(boundary)--\r\n")
-        request.httpBody = body
+        let envelope = FileManager.default.temporaryDirectory.appendingPathComponent("upload-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: envelope) }
+        try await Self.writeMultipartEnvelope(
+            to: envelope, boundary: boundary, filename: filename, source: fileURL,
+            fields: [
+                ("deviceAssetId", "immich-in-finder-\(UUID().uuidString)"),
+                ("deviceId", "immich-in-finder"),
+                ("fileCreatedAt", createdAt),
+                ("fileModifiedAt", modifiedAt),
+            ]
+        )
 
-        let (responseData, response) = try await session.data(for: request)
+        let (responseData, response) = try await session.upload(for: request, fromFile: envelope)
         try Self.ensureOK(response, path: "/api/assets")
         let decoded = try JSONDecoder().decode(UploadResponse.self, from: responseData)
         return UploadResult(id: decoded.id, isDuplicate: decoded.status == "duplicate")
+    }
+
+    // Builds the multipart body on disk on a background queue (off the
+    // cooperative pool), copying the source file in bounded chunks.
+    private static func writeMultipartEnvelope(to url: URL, boundary: String, filename: String, source: URL, fields: [(String, String)]) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            DispatchQueue.global(qos: .utility).async {
+                do {
+                    var prefix = Data()
+                    for (name, value) in fields {
+                        prefix.appendString("--\(boundary)\r\n")
+                        prefix.appendString("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n")
+                        prefix.appendString("\(value)\r\n")
+                    }
+                    prefix.appendString("--\(boundary)\r\n")
+                    prefix.appendString("Content-Disposition: form-data; name=\"assetData\"; filename=\"\(filename)\"\r\n")
+                    prefix.appendString("Content-Type: application/octet-stream\r\n\r\n")
+
+                    FileManager.default.createFile(atPath: url.path, contents: nil)
+                    let writer = try FileHandle(forWritingTo: url)
+                    defer { try? writer.close() }
+                    try writer.write(contentsOf: prefix)
+                    let reader = try FileHandle(forReadingFrom: source)
+                    defer { try? reader.close() }
+                    while let chunk = try reader.read(upToCount: 1 << 20), chunk.isEmpty == false {
+                        try writer.write(contentsOf: chunk)
+                    }
+                    try writer.write(contentsOf: Data("\r\n--\(boundary)--\r\n".utf8))
+                    continuation.resume()
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
     }
 
     func addAssets(albumID: String, assetIDs: [String]) async throws {

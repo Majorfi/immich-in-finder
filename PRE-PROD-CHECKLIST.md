@@ -20,6 +20,8 @@
   album pages back to exactly 4433 items; `withExif` returns file sizes.
 - Extension builds under **Swift 6 strict concurrency**, zero concurrency warnings.
 - `ItemID` identifier construction ↔ parsing round-trips exactly.
+- 96 automated tests (unit + live integration); ~89% source line coverage.
+- Errors mapped to `NSFileProviderError` codes; uploads streamed from disk.
 
 ---
 
@@ -67,7 +69,8 @@
 
 - [ ] Large album (4400+) enumerates in Finder without timeout (pagination holds).
 - [ ] Bulk drag (~50 files at once) — no errors, no album-list refetch storm.
-- [ ] Large video upload — **currently buffered fully in memory** (see deferred tasks).
+- [ ] Large video upload works end-to-end — now streamed from disk (not buffered);
+      still verify a multi-GB file in the real Finder.
 - [ ] Assets with missing/odd metadata decode (nullable model fields).
 - [ ] Special characters / very long names in albums and files.
 - [ ] Trash/move propagation: deleted/moved asset still shows in *other* views until
@@ -77,8 +80,8 @@
 
 - [ ] Revoked/expired API key → graceful failure, domain not left broken.
 - [ ] Server unreachable / slow → no UI hang, retriable.
-- [ ] Map failures to specific `NSFileProviderError` codes (`.notAuthenticated`,
-      `.insufficientQuota`, `.serverUnreachable`) instead of generic errors.
+- [x] Failures map to specific `NSFileProviderError` codes (`.notAuthenticated`,
+      `.insufficientQuota`, `.serverUnreachable`, `.noSuchItem`) — unit-tested.
 - [ ] Extension killed mid-upload (system kills FP extensions aggressively) leaves
       no corrupt/partial state.
 
@@ -92,11 +95,12 @@
 
 ## 🟢 Deferred / hardening (tracked, not blockers)
 
-- [ ] Stream uploads instead of buffering in memory — *spawned task task_4dfd352b*.
+- [x] Stream uploads instead of buffering in memory — done (disk envelope + upload(fromFile:)).
 - [ ] `allowsEvicting` → `NSFileProviderContentPolicy` — *spawned task task_d6f790f1*.
 - [ ] Full two-way sync: real `enumerateChanges` + persisted sync anchors so remote
       changes (phone/web) propagate to Finder automatically.
-- [ ] Commit a small test target: `ItemID` round-trip, model decoding, API contract.
+- [x] Unit + live-gated integration tests (`ImmichDriveTests`) — 96 tests, ~89% source
+      line coverage; runs headless in CI, integration tests skip without a server.
 - [ ] Keep `SWIFT_VERSION = 6.0` + strict concurrency on the extension (already set).
 
 ---
