@@ -43,7 +43,7 @@ final class ImmichClientMockTests: XCTestCase {
     func testListTagsDecodes() async throws {
         let client = MockClient.make(json: #"[{"id":"t","name":"Trip","value":"Trip"}]"#)
         let tags = try await client.listTags()
-        XCTAssertEqual(tags.first?.name, "Trip")
+        XCTAssertEqual(tags.map { "\($0.id):\($0.name)" }, ["t:Trip"])
     }
 
     func testListCitiesDerivesPlaces() async throws {
@@ -95,14 +95,21 @@ final class ImmichClientMockTests: XCTestCase {
         XCTAssertEqual(renamed.albumName, "Name")
     }
 
-    func testBodylessAndBodyMutationsSucceed() async throws {
-        let client = MockClient.make(status: 200, json: "")
-        // none of these decode a body; they just must not throw on 2xx.
+    func testMutationsHitCorrectEndpoints() async throws {
+        let log = RequestLog()
+        let client = MockClient.make { req in log.record(req); return (200, Data("[]".utf8)) }
         try await client.addAssets(albumID: "a", assetIDs: ["x"])
         try await client.removeAssets(albumID: "a", assetIDs: ["x"])
         try await client.trashAssets(assetIDs: ["x"])
         try await client.deleteAssetsPermanently(assetIDs: ["x"])
         try await client.deleteAlbum(id: "a")
+        XCTAssertEqual(log.all, [
+            "PUT /api/albums/a/assets",
+            "DELETE /api/albums/a/assets",
+            "DELETE /api/assets",
+            "DELETE /api/assets",
+            "DELETE /api/albums/a",
+        ])
     }
 
     func testDownloadReturnsRawBytes() async throws {

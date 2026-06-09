@@ -49,29 +49,36 @@ final class EnumeratorTests: XCTestCase {
         return (observer.items, observer.error)
     }
 
-    // Drives every branch of the enumerateItems switch.
-    func testEveryContainerEnumeratesSomething() async {
+    // Drives every branch of the enumerateItems switch and checks the first item
+    // each branch produces (not just that something came back).
+    func testEveryContainerEnumeratesExpectedItems() async {
+        let original = VisibleSections.load()
+        defer { VisibleSections.save(original) }
         VisibleSections.save(Set(SectionKind.allCases))
-        let containers: [(EnumeratedContainer, String)] = [
-            (.sections, "sections"),
-            (.albums, "albums"),
-            (.album(id: "a"), "album assets"),
-            (.years, "years"),
-            (.months(year: "2024"), "months"),
-            (.month(yearMonth: "2024-03"), "month assets"),
-            (.people, "people"),
-            (.person(id: "p"), "person assets"),
-            (.countries, "countries"),
-            (.cities(country: "France"), "cities"),
-            (.place(country: "France", city: "Paris"), "place assets"),
-            (.tags, "tags"),
-            (.tag(id: "t"), "tag assets"),
-            (.favorites, "favorites"),
+        // (container, label, expected first filename or nil to only check non-empty)
+        let containers: [(EnumeratedContainer, String, String?)] = [
+            (.sections, "sections", "Albums"),
+            (.albums, "albums", "Trip"),
+            (.album(id: "a"), "album assets", "f.jpg"),
+            (.years, "years", "2024"),
+            (.months(year: "2024"), "months", nil),
+            (.month(yearMonth: "2024-03"), "month assets", "f.jpg"),
+            (.people, "people", "Alice"),
+            (.person(id: "p"), "person assets", "f.jpg"),
+            (.countries, "countries", "France"),
+            (.cities(country: "France"), "cities", "Paris"),
+            (.place(country: "France", city: "Paris"), "place assets", "f.jpg"),
+            (.tags, "tags", "Trip"),
+            (.tag(id: "t"), "tag assets", "f.jpg"),
+            (.favorites, "favorites", "f.jpg"),
         ]
-        for (container, label) in containers {
+        for (container, label, expectedFirst) in containers {
             let (items, error) = await enumerate(container)
             XCTAssertNil(error, "\(label) errored: \(String(describing: error))")
             XCTAssertFalse(items.isEmpty, "\(label) enumerated nothing")
+            if let expectedFirst {
+                XCTAssertEqual(items.first?.filename, expectedFirst, "\(label) first item")
+            }
         }
     }
 
@@ -94,12 +101,12 @@ final class EnumeratorTests: XCTestCase {
         XCTAssertNotNil(observer.error)
     }
 
-    func testChangeEnumerationAndSyncAnchorAreStable() async {
+    func testSyncAnchorIsTheStableSentinel() async {
         let client = immichLikeClient()
         let enumerator = ItemEnumerator(client: client, cache: ImmichCache(client: client), container: .albums)
         let anchorExp = expectation(description: "anchor")
         enumerator.currentSyncAnchor { anchor in
-            XCTAssertNotNil(anchor)
+            XCTAssertEqual(anchor?.rawValue, Data("anchor-v1".utf8))
             anchorExp.fulfill()
         }
         await fulfillment(of: [anchorExp], timeout: 5)

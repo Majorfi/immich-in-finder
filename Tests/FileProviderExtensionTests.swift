@@ -83,10 +83,11 @@ final class FileProviderExtensionTests: XCTestCase {
 
     func testItemForAlbumPersonTagAndAsset() async {
         let ext = makeExtension()
-        for raw in ["album:a", "person:p", "tag:t", "asset:a:x"] {
+        let expected = ["album:a": "Trip", "person:p": "Al", "tag:t": "T", "asset:a:x": "f.jpg"]
+        for (raw, filename) in expected {
             let outcome = await item(ext, raw)
             XCTAssertTrue(outcome.ok, "\(raw) errored: \(outcome.error ?? "")")
-            XCTAssertNotNil(outcome.filename, "\(raw) returned no item")
+            XCTAssertEqual(outcome.filename, filename, "\(raw)")
         }
     }
 
@@ -146,7 +147,9 @@ final class FileProviderExtensionTests: XCTestCase {
         let template = TemplateItem(parent: "album:a", filename: "f.jpg", contentType: .jpeg)
         let outcome = await create(makeExtension(), template: template, contents: url)
         XCTAssertTrue(outcome.ok, "upload errored: \(outcome.error ?? "")")
-        XCTAssertNotNil(outcome.filename)
+        // The returned item is resolved from the album after upload+add, so the
+        // filename proves the whole chain ran (upload -> add -> refetch -> resolve).
+        XCTAssertEqual(outcome.filename, "f.jpg")
     }
 
     // MARK: modifyItem
@@ -163,14 +166,14 @@ final class FileProviderExtensionTests: XCTestCase {
         let item = TemplateItem(id: "album:a", parent: "section:albums", filename: "Renamed", contentType: .folder)
         let outcome = await modify(makeExtension(), item: item, fields: [.filename])
         XCTAssertTrue(outcome.ok)
-        XCTAssertNotNil(outcome.filename)
+        XCTAssertEqual(outcome.filename, "Renamed", "rename should return the new album name")
     }
 
     func testMoveAssetBetweenAlbums() async {
         let item = TemplateItem(id: "asset:a:x", parent: "album:b", filename: "f.jpg", contentType: .jpeg)
         let outcome = await modify(makeExtension(), item: item, fields: [.parentItemIdentifier])
         XCTAssertTrue(outcome.ok, "move errored: \(outcome.error ?? "")")
-        XCTAssertNotNil(outcome.filename)
+        XCTAssertEqual(outcome.filename, "f.jpg")
     }
 
     func testModifyUnsupportedIsNoOp() async {

@@ -28,6 +28,19 @@ final class MockURLProtocol: URLProtocol {
     }
 }
 
+// Records "METHOD path" for each intercepted request so tests can assert which
+// endpoints were actually hit.
+final class RequestLog: @unchecked Sendable {
+    private var entries: [String] = []
+    private let lock = NSLock()
+    func record(_ request: URLRequest) {
+        lock.lock(); defer { lock.unlock() }
+        entries.append("\(request.httpMethod ?? "?") \(request.url?.path ?? "?")")
+    }
+    var all: [String] { lock.lock(); defer { lock.unlock() }; return entries }
+    func contains(_ entry: String) -> Bool { all.contains(entry) }
+}
+
 enum MockClient {
     // An ImmichClient whose every request is answered by `handler`.
     static func make(_ handler: @escaping @Sendable (URLRequest) throws -> (Int, Data)) -> ImmichClient {
