@@ -6,11 +6,13 @@ import Foundation
 enum SectionKind: String, CaseIterable, Sendable {
     case albums
     case timeline
+    case people
 
     var displayName: String {
         switch self {
         case .albums: return "Albums"
         case .timeline: return "Timeline"
+        case .people: return "People"
         }
     }
 }

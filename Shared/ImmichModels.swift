@@ -52,10 +52,22 @@ struct SearchAssets: Decodable, Sendable {
     let nextPage: String?
 }
 
+struct PersonSummary: Decodable, Sendable {
+    let id: String
+    let name: String?
+    let isHidden: Bool?
+}
+
+struct PeopleResponse: Decodable, Sendable {
+    let people: [PersonSummary]
+    let hasNextPage: Bool?
+}
+
 struct MetadataSearchRequest: Encodable, Sendable {
     let takenAfter: String?
     let takenBefore: String?
     let albumIds: [String]?
+    let personIds: [String]?
     let page: Int
     let size: Int
     let order: String

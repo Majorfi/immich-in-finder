@@ -85,6 +85,7 @@ The extension's `Info.plist` **must** include `NSExtensionFileProviderDocumentGr
 - [x] Write support, phase 2: rename albums, move assets between albums
 - [x] Refresh the affected container after a local write (`signalEnumerator`)
 - [x] Settings toggle to choose which top-level folders show in Finder
+- [x] `People/` view — named people as folders (facial recognition)
+- [ ] `Places/` view (geocoding) — next `SectionKind`
 - [ ] Full two-way sync: pull remote changes via `enumerateChanges` + sync anchors
-- [ ] People (facial recognition) and Places (geocoding) — each a new `SectionKind` toggle
 - [ ] Favorites

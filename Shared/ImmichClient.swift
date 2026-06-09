@@ -105,8 +105,8 @@ struct ImmichClient: Sendable {
         _ = try await sendJSON(method: "DELETE", path: "/api/assets", body: TrashRequest(ids: assetIDs, force: false))
     }
 
-    func searchMetadata(takenAfter: String? = nil, takenBefore: String? = nil, albumIds: [String]? = nil, page: Int, size: Int, order: String) async throws -> SearchPage {
-        let body = MetadataSearchRequest(takenAfter: takenAfter, takenBefore: takenBefore, albumIds: albumIds, page: page, size: size, order: order, withExif: true)
+    func searchMetadata(takenAfter: String? = nil, takenBefore: String? = nil, albumIds: [String]? = nil, personIds: [String]? = nil, page: Int, size: Int, order: String) async throws -> SearchPage {
+        let body = MetadataSearchRequest(takenAfter: takenAfter, takenBefore: takenBefore, albumIds: albumIds, personIds: personIds, page: page, size: size, order: order, withExif: true)
         let response: SearchResponse = try await postJSON(path: "/api/search/metadata", body: body)
         return SearchPage(assets: response.assets.items, nextPage: response.assets.nextPage)
     }
@@ -125,11 +125,11 @@ struct ImmichClient: Sendable {
     // Pages through /api/search/metadata until exhausted, gathering every asset
     // matching the filter. Backs both the month (timeline) and album views, so
     // album enumeration is bounded by page size instead of one unbounded fetch.
-    private func searchAll(albumIds: [String]? = nil, takenAfter: String? = nil, takenBefore: String? = nil) async throws -> [Asset] {
+    private func searchAll(albumIds: [String]? = nil, personIds: [String]? = nil, takenAfter: String? = nil, takenBefore: String? = nil) async throws -> [Asset] {
         var all: [Asset] = []
         var page = 1
         while true {
-            let result = try await searchMetadata(takenAfter: takenAfter, takenBefore: takenBefore, albumIds: albumIds, page: page, size: 250, order: "asc")
+            let result = try await searchMetadata(takenAfter: takenAfter, takenBefore: takenBefore, albumIds: albumIds, personIds: personIds, page: page, size: 250, order: "asc")
             all.append(contentsOf: result.assets)
             guard result.nextPage != nil else {
                 break
@@ -146,6 +146,25 @@ struct ImmichClient: Sendable {
 
     func searchAllAlbum(albumID: String) async throws -> [Asset] {
         try await searchAll(albumIds: [albumID])
+    }
+
+    func searchAllPerson(personID: String) async throws -> [Asset] {
+        try await searchAll(personIds: [personID])
+    }
+
+    // Named, non-hidden people only — unnamed face clusters aren't useful folders.
+    func listPeople() async throws -> [PersonSummary] {
+        var all: [PersonSummary] = []
+        var page = 1
+        while true {
+            let response: PeopleResponse = try await getJSON(path: "/api/people?page=\(page)&size=500")
+            all.append(contentsOf: response.people)
+            guard response.hasNextPage == true else {
+                break
+            }
+            page += 1
+        }
+        return all.filter { ($0.name?.isEmpty == false) && $0.isHidden != true }
     }
 
     func hasAssets(after: String, before: String) async throws -> Bool {

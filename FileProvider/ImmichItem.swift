@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 enum AssetLocation {
     case album(id: String)
     case month(yearMonth: String)
+    case person(id: String)
 }
 
 func nameCounts(_ names: [String]) -> [String: Int] {
@@ -67,6 +68,8 @@ final class ImmichItem: NSObject, NSFileProviderItem {
             return ItemID.asset(albumID: id, assetID: asset.assetID).identifier
         case .month(let yearMonth):
             return ItemID.timelineAsset(yearMonth: yearMonth, assetID: asset.assetID).identifier
+        case .person(let id):
+            return ItemID.personAsset(personID: id, assetID: asset.assetID).identifier
         }
     }
 
@@ -76,6 +79,8 @@ final class ImmichItem: NSObject, NSFileProviderItem {
             return ItemID.album(id).identifier
         case .month(let yearMonth):
             return ItemID.month(yearMonth).identifier
+        case .person(let id):
+            return ItemID.person(id).identifier
         }
     }
 
@@ -103,7 +108,7 @@ final class ImmichItem: NSObject, NSFileProviderItem {
         switch location {
         case .album:
             return [.allowsReading, .allowsEvicting, .allowsDeleting, .allowsReparenting]
-        case .month:
+        case .month, .person:
             return [.allowsReading, .allowsEvicting, .allowsDeleting]
         }
     }
@@ -209,6 +214,32 @@ final class AlbumItem: NSObject, NSFileProviderItem {
 
     var itemVersion: NSFileProviderItemVersion {
         let version = Data("album:\(album.albumName):\(album.assetCount)".utf8)
+        return NSFileProviderItemVersion(contentVersion: version, metadataVersion: version)
+    }
+}
+
+final class PersonItem: NSObject, NSFileProviderItem {
+    private let id: String
+    private let displayName: String
+
+    init(id: String, filename: String) {
+        self.id = id
+        self.displayName = filename
+    }
+
+    var itemIdentifier: NSFileProviderItemIdentifier {
+        ItemID.person(id).identifier
+    }
+
+    var parentItemIdentifier: NSFileProviderItemIdentifier {
+        ItemID.peopleSection.identifier
+    }
+
+    var filename: String { displayName }
+    var contentType: UTType { .folder }
+    var capabilities: NSFileProviderItemCapabilities { [.allowsContentEnumerating, .allowsReading] }
+    var itemVersion: NSFileProviderItemVersion {
+        let version = Data("person:\(id):\(displayName)".utf8)
         return NSFileProviderItemVersion(contentVersion: version, metadataVersion: version)
     }
 }

@@ -7,6 +7,7 @@ import FileProvider
 actor ImmichCache {
     private let client: ImmichClient
     private var albumListTask: Task<[AlbumSummary], Error>?
+    private var peopleListTask: Task<[PersonSummary], Error>?
     private var assetTasks: [String: Task<[Asset], Error>] = [:]
 
     init(client: ImmichClient) {
@@ -28,6 +29,21 @@ actor ImmichCache {
         }
     }
 
+    func peopleList() async throws -> [PersonSummary] {
+        if let existing = peopleListTask {
+            return try await existing.value
+        }
+        let client = self.client
+        let task = Task { try await client.listPeople() }
+        peopleListTask = task
+        do {
+            return try await task.value
+        } catch {
+            peopleListTask = nil
+            throw error
+        }
+    }
+
     func assets(album albumID: String) async throws -> [Asset] {
         let client = self.client
         return try await cachedAssets(key: "album:\(albumID)") {
@@ -39,6 +55,13 @@ actor ImmichCache {
         let client = self.client
         return try await cachedAssets(key: "month:\(yearMonth)") {
             try await client.searchAllMonth(yearMonth: yearMonth)
+        }
+    }
+
+    func assets(person personID: String) async throws -> [Asset] {
+        let client = self.client
+        return try await cachedAssets(key: "person:\(personID)") {
+            try await client.searchAllPerson(personID: personID)
         }
     }
 
@@ -54,6 +77,10 @@ actor ImmichCache {
 
     func invalidate(month yearMonth: String) {
         assetTasks["month:\(yearMonth)"] = nil
+    }
+
+    func invalidate(person personID: String) {
+        assetTasks["person:\(personID)"] = nil
     }
 
     private func cachedAssets(key: String, fetch: @Sendable @escaping () async throws -> [Asset]) async throws -> [Asset] {
@@ -78,6 +105,8 @@ extension AssetLocation {
             return try await cache.assets(album: id)
         case .month(let yearMonth):
             return try await cache.assets(month: yearMonth)
+        case .person(let id):
+            return try await cache.assets(person: id)
         }
     }
 }
@@ -89,6 +118,7 @@ extension SectionKind {
         switch self {
         case .albums: return .albumsSection
         case .timeline: return .timelineSection
+        case .people: return .peopleSection
         }
     }
 }
@@ -100,6 +130,8 @@ enum EnumeratedContainer {
     case years
     case months(year: String)
     case month(yearMonth: String)
+    case people
+    case person(id: String)
 }
 
 final class ItemEnumerator: NSObject, NSFileProviderEnumerator {
@@ -166,6 +198,19 @@ final class ItemEnumerator: NSObject, NSFileProviderEnumerator {
                     let assets = try await cache.assets(month: yearMonth)
                     fileProviderLog.log("timeline \(yearMonth, privacy: .public): \(assets.count, privacy: .public) assets")
                     observer.didEnumerate(immichItems(from: assets, location: .month(yearMonth: yearMonth)))
+                    observer.finishEnumerating(upTo: nil)
+                case .people:
+                    let people = try await cache.peopleList()
+                    let counts = nameCounts(people.map { $0.name ?? "" })
+                    fileProviderLog.log("enumerated \(people.count, privacy: .public) named people")
+                    observer.didEnumerate(people.map {
+                        PersonItem(id: $0.id, filename: disambiguatedName(base: $0.name ?? "", id: $0.id, counts: counts))
+                    })
+                    observer.finishEnumerating(upTo: nil)
+                case .person(let id):
+                    let assets = try await cache.assets(person: id)
+                    fileProviderLog.log("person \(id, privacy: .public): \(assets.count, privacy: .public) assets")
+                    observer.didEnumerate(immichItems(from: assets, location: .person(id: id)))
                     observer.finishEnumerating(upTo: nil)
                 }
             } catch {

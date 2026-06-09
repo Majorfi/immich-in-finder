@@ -12,6 +12,9 @@ enum ItemID {
     case year(String)
     case month(String)
     case timelineAsset(yearMonth: String, assetID: String)
+    case peopleSection
+    case person(String)
+    case personAsset(personID: String, assetID: String)
     case other
 
     init(_ identifier: NSFileProviderItemIdentifier) {
@@ -26,6 +29,14 @@ enum ItemID {
         }
         if raw == "section:timeline" {
             self = .timelineSection
+            return
+        }
+        if raw == "section:people" {
+            self = .peopleSection
+            return
+        }
+        if raw.hasPrefix("person:") {
+            self = .person(String(raw.dropFirst("person:".count)))
             return
         }
         if raw.hasPrefix("album:") {
@@ -54,6 +65,13 @@ enum ItemID {
                 return
             }
         }
+        if raw.hasPrefix("passet:") {
+            let parts = raw.dropFirst("passet:".count).split(separator: ":", maxSplits: 1).map(String.init)
+            if parts.count == 2 {
+                self = .personAsset(personID: parts[0], assetID: parts[1])
+                return
+            }
+        }
         self = .other
     }
 
@@ -65,6 +83,8 @@ enum ItemID {
             return (assetID, .album(id: albumID))
         case .timelineAsset(let yearMonth, let assetID):
             return (assetID, .month(yearMonth: yearMonth))
+        case .personAsset(let personID, let assetID):
+            return (assetID, .person(id: personID))
         default:
             return nil
         }
@@ -91,6 +111,12 @@ enum ItemID {
             return NSFileProviderItemIdentifier(rawValue: "month:\(yearMonth)")
         case .timelineAsset(let yearMonth, let assetID):
             return NSFileProviderItemIdentifier(rawValue: "tasset:\(yearMonth):\(assetID)")
+        case .peopleSection:
+            return NSFileProviderItemIdentifier(rawValue: "section:people")
+        case .person(let id):
+            return NSFileProviderItemIdentifier(rawValue: "person:\(id)")
+        case .personAsset(let personID, let assetID):
+            return NSFileProviderItemIdentifier(rawValue: "passet:\(personID):\(assetID)")
         case .other:
             return NSFileProviderItemIdentifier(rawValue: "")
         }
@@ -150,13 +176,35 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
         case .root:
             completionHandler(RootItem(), nil)
         case .albumsSection:
-            completionHandler(SectionItem(id: "section:albums", name: "Albums"), nil)
+            completionHandler(SectionItem(id: ItemID.albumsSection.identifier.rawValue, name: SectionKind.albums.displayName), nil)
         case .timelineSection:
-            completionHandler(SectionItem(id: "section:timeline", name: "Timeline"), nil)
+            completionHandler(SectionItem(id: ItemID.timelineSection.identifier.rawValue, name: SectionKind.timeline.displayName), nil)
+        case .peopleSection:
+            completionHandler(SectionItem(id: ItemID.peopleSection.identifier.rawValue, name: SectionKind.people.displayName), nil)
         case .year(let year):
             completionHandler(YearItem(year: year), nil)
         case .month(let yearMonth):
             completionHandler(MonthItem(yearMonth: yearMonth), nil)
+        case .person(let personID):
+            guard let cache else {
+                completionHandler(nil, Self.error(.notAuthenticated))
+                return progress
+            }
+            Task {
+                do {
+                    let people = try await cache.peopleList()
+                    guard let person = people.first(where: { $0.id == personID }) else {
+                        completionHandler(nil, Self.error(.noSuchItem))
+                        progress.completedUnitCount = 1
+                        return
+                    }
+                    completionHandler(Self.personItem(for: person, in: people), nil)
+                } catch {
+                    completionHandler(nil, error)
+                }
+                progress.completedUnitCount = 1
+            }
+            return progress
         case .album(let albumID):
             guard let cache else {
                 completionHandler(nil, Self.error(.notAuthenticated))
@@ -177,7 +225,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 progress.completedUnitCount = 1
             }
             return progress
-        case .asset, .timelineAsset, .other:
+        case .asset, .timelineAsset, .personAsset, .other:
             completionHandler(nil, Self.error(.noSuchItem))
         }
         progress.completedUnitCount = 1
@@ -233,7 +281,11 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
             return ItemEnumerator(client: client, cache: cache, container: .months(year: year))
         case .month(let yearMonth):
             return ItemEnumerator(client: client, cache: cache, container: .month(yearMonth: yearMonth))
-        case .asset, .timelineAsset:
+        case .peopleSection:
+            return ItemEnumerator(client: client, cache: cache, container: .people)
+        case .person(let id):
+            return ItemEnumerator(client: client, cache: cache, container: .person(id: id))
+        case .asset, .timelineAsset, .personAsset:
             throw Self.error(.noSuchItem)
         }
     }
@@ -407,6 +459,8 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     await cache.invalidate(album: id)
                 case .month(let yearMonth):
                     await cache.invalidate(month: yearMonth)
+                case .person(let id):
+                    await cache.invalidate(person: id)
                 }
                 fileProviderLog.log("trashed asset \(ref.assetID, privacy: .public)")
                 completionHandler(nil)
@@ -468,6 +522,8 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
             return ItemID.album(id).identifier
         case .month(let yearMonth):
             return ItemID.month(yearMonth).identifier
+        case .person(let id):
+            return ItemID.person(id).identifier
         }
     }
 
@@ -478,6 +534,12 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
         let counts = nameCounts(albums.map { $0.albumName })
         let filename = disambiguatedName(base: album.albumName, id: album.albumID, counts: counts)
         return AlbumItem(album: album, filename: filename)
+    }
+
+    private static func personItem(for person: PersonSummary, in people: [PersonSummary]) -> PersonItem {
+        let counts = nameCounts(people.map { $0.name ?? "" })
+        let filename = disambiguatedName(base: person.name ?? "", id: person.id, counts: counts)
+        return PersonItem(id: person.id, filename: filename)
     }
 }
 
