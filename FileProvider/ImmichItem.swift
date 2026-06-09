@@ -7,6 +7,7 @@ enum AssetLocation {
     case month(yearMonth: String)
     case person(id: String)
     case place(country: String, city: String)
+    case tag(id: String)
 }
 
 func nameCounts(_ names: [String]) -> [String: Int] {
@@ -73,6 +74,8 @@ final class ImmichItem: NSObject, NSFileProviderItem {
             return ItemID.personAsset(personID: id, assetID: asset.assetID).identifier
         case .place(let country, let city):
             return ItemID.placeAsset(country: country, city: city, assetID: asset.assetID).identifier
+        case .tag(let id):
+            return ItemID.tagAsset(tagID: id, assetID: asset.assetID).identifier
         }
     }
 
@@ -86,6 +89,8 @@ final class ImmichItem: NSObject, NSFileProviderItem {
             return ItemID.person(id).identifier
         case .place(let country, let city):
             return ItemID.city(country: country, city: city).identifier
+        case .tag(let id):
+            return ItemID.tag(id).identifier
         }
     }
 
@@ -113,7 +118,7 @@ final class ImmichItem: NSObject, NSFileProviderItem {
         switch location {
         case .album:
             return [.allowsReading, .allowsEvicting, .allowsDeleting, .allowsReparenting]
-        case .month, .person, .place:
+        case .month, .person, .place, .tag:
             return [.allowsReading, .allowsEvicting, .allowsDeleting]
         }
     }
@@ -245,6 +250,26 @@ final class PersonItem: NSObject, NSFileProviderItem {
     var capabilities: NSFileProviderItemCapabilities { [.allowsContentEnumerating, .allowsReading] }
     var itemVersion: NSFileProviderItemVersion {
         let version = Data("person:\(id):\(displayName)".utf8)
+        return NSFileProviderItemVersion(contentVersion: version, metadataVersion: version)
+    }
+}
+
+final class TagItem: NSObject, NSFileProviderItem {
+    private let id: String
+    private let displayName: String
+
+    init(id: String, filename: String) {
+        self.id = id
+        self.displayName = filename
+    }
+
+    var itemIdentifier: NSFileProviderItemIdentifier { ItemID.tag(id).identifier }
+    var parentItemIdentifier: NSFileProviderItemIdentifier { ItemID.tagsSection.identifier }
+    var filename: String { displayName }
+    var contentType: UTType { .folder }
+    var capabilities: NSFileProviderItemCapabilities { [.allowsContentEnumerating, .allowsReading] }
+    var itemVersion: NSFileProviderItemVersion {
+        let version = Data("tag:\(id):\(displayName)".utf8)
         return NSFileProviderItemVersion(contentVersion: version, metadataVersion: version)
     }
 }

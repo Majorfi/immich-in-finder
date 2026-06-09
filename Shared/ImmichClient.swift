@@ -105,8 +105,8 @@ struct ImmichClient: Sendable {
         _ = try await sendJSON(method: "DELETE", path: "/api/assets", body: TrashRequest(ids: assetIDs, force: false))
     }
 
-    func searchMetadata(takenAfter: String? = nil, takenBefore: String? = nil, albumIds: [String]? = nil, personIds: [String]? = nil, city: String? = nil, country: String? = nil, page: Int, size: Int, order: String) async throws -> SearchPage {
-        let body = MetadataSearchRequest(takenAfter: takenAfter, takenBefore: takenBefore, albumIds: albumIds, personIds: personIds, city: city, country: country, page: page, size: size, order: order, withExif: true)
+    func searchMetadata(takenAfter: String? = nil, takenBefore: String? = nil, albumIds: [String]? = nil, personIds: [String]? = nil, tagIds: [String]? = nil, city: String? = nil, country: String? = nil, page: Int, size: Int, order: String) async throws -> SearchPage {
+        let body = MetadataSearchRequest(takenAfter: takenAfter, takenBefore: takenBefore, albumIds: albumIds, personIds: personIds, tagIds: tagIds, city: city, country: country, page: page, size: size, order: order, withExif: true)
         let response: SearchResponse = try await postJSON(path: "/api/search/metadata", body: body)
         return SearchPage(assets: response.assets.items, nextPage: response.assets.nextPage)
     }
@@ -125,11 +125,11 @@ struct ImmichClient: Sendable {
     // Pages through /api/search/metadata until exhausted, gathering every asset
     // matching the filter. Backs both the month (timeline) and album views, so
     // album enumeration is bounded by page size instead of one unbounded fetch.
-    private func searchAll(albumIds: [String]? = nil, personIds: [String]? = nil, city: String? = nil, country: String? = nil, takenAfter: String? = nil, takenBefore: String? = nil) async throws -> [Asset] {
+    private func searchAll(albumIds: [String]? = nil, personIds: [String]? = nil, tagIds: [String]? = nil, city: String? = nil, country: String? = nil, takenAfter: String? = nil, takenBefore: String? = nil) async throws -> [Asset] {
         var all: [Asset] = []
         var page = 1
         while true {
-            let result = try await searchMetadata(takenAfter: takenAfter, takenBefore: takenBefore, albumIds: albumIds, personIds: personIds, city: city, country: country, page: page, size: 250, order: "asc")
+            let result = try await searchMetadata(takenAfter: takenAfter, takenBefore: takenBefore, albumIds: albumIds, personIds: personIds, tagIds: tagIds, city: city, country: country, page: page, size: 250, order: "asc")
             all.append(contentsOf: result.assets)
             guard result.nextPage != nil else {
                 break
@@ -154,6 +154,14 @@ struct ImmichClient: Sendable {
 
     func searchAllCity(country: String, city: String) async throws -> [Asset] {
         try await searchAll(city: city, country: country)
+    }
+
+    func searchAllTag(tagID: String) async throws -> [Asset] {
+        try await searchAll(tagIds: [tagID])
+    }
+
+    func listTags() async throws -> [TagSummary] {
+        try await getJSON(path: "/api/tags")
     }
 
     // Distinct (country, city) places — the cities endpoint returns one

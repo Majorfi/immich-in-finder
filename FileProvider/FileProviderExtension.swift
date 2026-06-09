@@ -19,6 +19,9 @@ enum ItemID {
     case country(String)
     case city(country: String, city: String)
     case placeAsset(country: String, city: String, assetID: String)
+    case tagsSection
+    case tag(String)
+    case tagAsset(tagID: String, assetID: String)
     case other
 
     init(_ identifier: NSFileProviderItemIdentifier) {
@@ -45,6 +48,14 @@ enum ItemID {
         }
         if raw == "section:places" {
             self = .placesSection
+            return
+        }
+        if raw == "section:tags" {
+            self = .tagsSection
+            return
+        }
+        if raw.hasPrefix("tag:") {
+            self = .tag(String(raw.dropFirst("tag:".count)))
             return
         }
         if raw.hasPrefix("country:") {
@@ -101,6 +112,13 @@ enum ItemID {
                 return
             }
         }
+        if raw.hasPrefix("tagasset:") {
+            let parts = raw.dropFirst("tagasset:".count).split(separator: ":", maxSplits: 1).map(String.init)
+            if parts.count == 2 {
+                self = .tagAsset(tagID: parts[0], assetID: parts[1])
+                return
+            }
+        }
         self = .other
     }
 
@@ -116,6 +134,8 @@ enum ItemID {
             return (assetID, .person(id: personID))
         case .placeAsset(let country, let city, let assetID):
             return (assetID, .place(country: country, city: city))
+        case .tagAsset(let tagID, let assetID):
+            return (assetID, .tag(id: tagID))
         default:
             return nil
         }
@@ -156,6 +176,12 @@ enum ItemID {
             return NSFileProviderItemIdentifier(rawValue: "city:\(country):\(city)")
         case .placeAsset(let country, let city, let assetID):
             return NSFileProviderItemIdentifier(rawValue: "qasset:\(country):\(city):\(assetID)")
+        case .tagsSection:
+            return NSFileProviderItemIdentifier(rawValue: "section:tags")
+        case .tag(let id):
+            return NSFileProviderItemIdentifier(rawValue: "tag:\(id)")
+        case .tagAsset(let tagID, let assetID):
+            return NSFileProviderItemIdentifier(rawValue: "tagasset:\(tagID):\(assetID)")
         case .other:
             return NSFileProviderItemIdentifier(rawValue: "")
         }
@@ -222,6 +248,8 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
             completionHandler(SectionItem(id: ItemID.peopleSection.identifier.rawValue, name: SectionKind.people.displayName), nil)
         case .placesSection:
             completionHandler(SectionItem(id: ItemID.placesSection.identifier.rawValue, name: SectionKind.places.displayName), nil)
+        case .tagsSection:
+            completionHandler(SectionItem(id: ItemID.tagsSection.identifier.rawValue, name: SectionKind.tags.displayName), nil)
         case .year(let year):
             completionHandler(YearItem(year: year), nil)
         case .month(let yearMonth):
@@ -250,6 +278,26 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 progress.completedUnitCount = 1
             }
             return progress
+        case .tag(let tagID):
+            guard let cache else {
+                completionHandler(nil, Self.error(.notAuthenticated))
+                return progress
+            }
+            Task {
+                do {
+                    let tags = try await cache.tagList()
+                    guard let tag = tags.first(where: { $0.id == tagID }) else {
+                        completionHandler(nil, Self.error(.noSuchItem))
+                        progress.completedUnitCount = 1
+                        return
+                    }
+                    completionHandler(Self.tagItem(for: tag, in: tags), nil)
+                } catch {
+                    completionHandler(nil, error)
+                }
+                progress.completedUnitCount = 1
+            }
+            return progress
         case .album(let albumID):
             guard let cache else {
                 completionHandler(nil, Self.error(.notAuthenticated))
@@ -270,7 +318,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 progress.completedUnitCount = 1
             }
             return progress
-        case .asset, .timelineAsset, .personAsset, .placeAsset, .other:
+        case .asset, .timelineAsset, .personAsset, .placeAsset, .tagAsset, .other:
             completionHandler(nil, Self.error(.noSuchItem))
         }
         progress.completedUnitCount = 1
@@ -336,7 +384,11 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
             return ItemEnumerator(client: client, cache: cache, container: .cities(country: name))
         case .city(let country, let city):
             return ItemEnumerator(client: client, cache: cache, container: .place(country: country, city: city))
-        case .asset, .timelineAsset, .personAsset, .placeAsset:
+        case .tagsSection:
+            return ItemEnumerator(client: client, cache: cache, container: .tags)
+        case .tag(let id):
+            return ItemEnumerator(client: client, cache: cache, container: .tag(id: id))
+        case .asset, .timelineAsset, .personAsset, .placeAsset, .tagAsset:
             throw Self.error(.noSuchItem)
         }
     }
@@ -514,6 +566,8 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     await cache.invalidate(person: id)
                 case .place(let country, let city):
                     await cache.invalidate(country: country, city: city)
+                case .tag(let id):
+                    await cache.invalidate(tag: id)
                 }
                 fileProviderLog.log("trashed asset \(ref.assetID, privacy: .public)")
                 completionHandler(nil)
@@ -579,6 +633,8 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
             return ItemID.person(id).identifier
         case .place(let country, let city):
             return ItemID.city(country: country, city: city).identifier
+        case .tag(let id):
+            return ItemID.tag(id).identifier
         }
     }
 
@@ -595,6 +651,12 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
         let counts = nameCounts(people.map { $0.name ?? "" })
         let filename = disambiguatedName(base: person.name ?? "", id: person.id, counts: counts)
         return PersonItem(id: person.id, filename: filename)
+    }
+
+    private static func tagItem(for tag: TagSummary, in tags: [TagSummary]) -> TagItem {
+        let counts = nameCounts(tags.map { $0.name })
+        let filename = disambiguatedName(base: tag.name, id: tag.id, counts: counts)
+        return TagItem(id: tag.id, filename: filename)
     }
 }
 

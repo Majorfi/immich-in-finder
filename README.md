@@ -87,5 +87,6 @@ The extension's `Info.plist` **must** include `NSExtensionFileProviderDocumentGr
 - [x] Settings toggle to choose which top-level folders show in Finder
 - [x] `People/` view — named people as folders (facial recognition)
 - [x] `Places/` view — `Country/City/` hierarchy (geocoding)
+- [x] `Tags/` view — tags as folders (`tagIds`)
 - [ ] Full two-way sync: pull remote changes via `enumerateChanges` + sync anchors
-- [ ] `Tags/` view (`tagIds`) and Favorites
+- [ ] Favorites

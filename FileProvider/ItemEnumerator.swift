@@ -9,6 +9,7 @@ actor ImmichCache {
     private var albumListTask: Task<[AlbumSummary], Error>?
     private var peopleListTask: Task<[PersonSummary], Error>?
     private var cityListTask: Task<[PlaceSummary], Error>?
+    private var tagListTask: Task<[TagSummary], Error>?
     private var assetTasks: [String: Task<[Asset], Error>] = [:]
 
     init(client: ImmichClient) {
@@ -88,6 +89,28 @@ actor ImmichCache {
         }
     }
 
+    func tagList() async throws -> [TagSummary] {
+        if let existing = tagListTask {
+            return try await existing.value
+        }
+        let client = self.client
+        let task = Task { try await client.listTags() }
+        tagListTask = task
+        do {
+            return try await task.value
+        } catch {
+            tagListTask = nil
+            throw error
+        }
+    }
+
+    func assets(tag tagID: String) async throws -> [Asset] {
+        let client = self.client
+        return try await cachedAssets(key: "tag:\(tagID)") {
+            try await client.searchAllTag(tagID: tagID)
+        }
+    }
+
     // Write operations drop the memoized fetch for the affected container so the
     // next enumeration re-reads it from the server instead of stale data.
     func invalidateAlbumList() {
@@ -108,6 +131,10 @@ actor ImmichCache {
 
     func invalidate(country: String, city: String) {
         assetTasks["place:\(country):\(city)"] = nil
+    }
+
+    func invalidate(tag tagID: String) {
+        assetTasks["tag:\(tagID)"] = nil
     }
 
     private func cachedAssets(key: String, fetch: @Sendable @escaping () async throws -> [Asset]) async throws -> [Asset] {
@@ -136,6 +163,8 @@ extension AssetLocation {
             return try await cache.assets(person: id)
         case .place(let country, let city):
             return try await cache.assets(country: country, city: city)
+        case .tag(let id):
+            return try await cache.assets(tag: id)
         }
     }
 }
@@ -149,6 +178,7 @@ extension SectionKind {
         case .timeline: return .timelineSection
         case .people: return .peopleSection
         case .places: return .placesSection
+        case .tags: return .tagsSection
         }
     }
 }
@@ -165,6 +195,8 @@ enum EnumeratedContainer {
     case countries
     case cities(country: String)
     case place(country: String, city: String)
+    case tags
+    case tag(id: String)
 }
 
 final class ItemEnumerator: NSObject, NSFileProviderEnumerator {
@@ -261,6 +293,19 @@ final class ItemEnumerator: NSObject, NSFileProviderEnumerator {
                     let assets = try await cache.assets(country: country, city: city)
                     fileProviderLog.log("place \(city, privacy: .public): \(assets.count, privacy: .public) assets")
                     observer.didEnumerate(immichItems(from: assets, location: .place(country: country, city: city)))
+                    observer.finishEnumerating(upTo: nil)
+                case .tags:
+                    let tags = try await cache.tagList()
+                    let counts = nameCounts(tags.map { $0.name })
+                    fileProviderLog.log("enumerated \(tags.count, privacy: .public) tags")
+                    observer.didEnumerate(tags.map {
+                        TagItem(id: $0.id, filename: disambiguatedName(base: $0.name, id: $0.id, counts: counts))
+                    })
+                    observer.finishEnumerating(upTo: nil)
+                case .tag(let id):
+                    let assets = try await cache.assets(tag: id)
+                    fileProviderLog.log("tag \(id, privacy: .public): \(assets.count, privacy: .public) assets")
+                    observer.didEnumerate(immichItems(from: assets, location: .tag(id: id)))
                     observer.finishEnumerating(upTo: nil)
                 }
             } catch {

@@ -20,6 +20,11 @@ struct PlaceSummary: Sendable, Hashable {
     let city: String
 }
 
+struct TagSummary: Decodable, Sendable {
+    let id: String
+    let name: String
+}
+
 struct Asset: Decodable, Sendable {
     let assetID: String
     let type: AssetType
@@ -77,6 +82,7 @@ struct MetadataSearchRequest: Encodable, Sendable {
     let takenBefore: String?
     let albumIds: [String]?
     let personIds: [String]?
+    let tagIds: [String]?
     let city: String?
     let country: String?
     let page: Int
