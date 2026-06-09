@@ -15,6 +15,10 @@ enum ItemID {
     case peopleSection
     case person(String)
     case personAsset(personID: String, assetID: String)
+    case placesSection
+    case country(String)
+    case city(country: String, city: String)
+    case placeAsset(country: String, city: String, assetID: String)
     case other
 
     init(_ identifier: NSFileProviderItemIdentifier) {
@@ -38,6 +42,21 @@ enum ItemID {
         if raw.hasPrefix("person:") {
             self = .person(String(raw.dropFirst("person:".count)))
             return
+        }
+        if raw == "section:places" {
+            self = .placesSection
+            return
+        }
+        if raw.hasPrefix("country:") {
+            self = .country(String(raw.dropFirst("country:".count)))
+            return
+        }
+        if raw.hasPrefix("city:") {
+            let parts = raw.dropFirst("city:".count).split(separator: ":", maxSplits: 1).map(String.init)
+            if parts.count == 2 {
+                self = .city(country: parts[0], city: parts[1])
+                return
+            }
         }
         if raw.hasPrefix("album:") {
             self = .album(String(raw.dropFirst("album:".count)))
@@ -72,6 +91,16 @@ enum ItemID {
                 return
             }
         }
+        if raw.hasPrefix("qasset:") {
+            // country (no colons) first, assetID (a UUID, no colons) last, so the
+            // city in between may contain anything without breaking the parse.
+            let parts = raw.dropFirst("qasset:".count).split(separator: ":").map(String.init)
+            if parts.count >= 3 {
+                let city = parts[1..<(parts.count - 1)].joined(separator: ":")
+                self = .placeAsset(country: parts[0], city: city, assetID: parts[parts.count - 1])
+                return
+            }
+        }
         self = .other
     }
 
@@ -85,6 +114,8 @@ enum ItemID {
             return (assetID, .month(yearMonth: yearMonth))
         case .personAsset(let personID, let assetID):
             return (assetID, .person(id: personID))
+        case .placeAsset(let country, let city, let assetID):
+            return (assetID, .place(country: country, city: city))
         default:
             return nil
         }
@@ -117,6 +148,14 @@ enum ItemID {
             return NSFileProviderItemIdentifier(rawValue: "person:\(id)")
         case .personAsset(let personID, let assetID):
             return NSFileProviderItemIdentifier(rawValue: "passet:\(personID):\(assetID)")
+        case .placesSection:
+            return NSFileProviderItemIdentifier(rawValue: "section:places")
+        case .country(let name):
+            return NSFileProviderItemIdentifier(rawValue: "country:\(name)")
+        case .city(let country, let city):
+            return NSFileProviderItemIdentifier(rawValue: "city:\(country):\(city)")
+        case .placeAsset(let country, let city, let assetID):
+            return NSFileProviderItemIdentifier(rawValue: "qasset:\(country):\(city):\(assetID)")
         case .other:
             return NSFileProviderItemIdentifier(rawValue: "")
         }
@@ -181,10 +220,16 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
             completionHandler(SectionItem(id: ItemID.timelineSection.identifier.rawValue, name: SectionKind.timeline.displayName), nil)
         case .peopleSection:
             completionHandler(SectionItem(id: ItemID.peopleSection.identifier.rawValue, name: SectionKind.people.displayName), nil)
+        case .placesSection:
+            completionHandler(SectionItem(id: ItemID.placesSection.identifier.rawValue, name: SectionKind.places.displayName), nil)
         case .year(let year):
             completionHandler(YearItem(year: year), nil)
         case .month(let yearMonth):
             completionHandler(MonthItem(yearMonth: yearMonth), nil)
+        case .country(let name):
+            completionHandler(CountryItem(name: name), nil)
+        case .city(let country, let city):
+            completionHandler(CityItem(country: country, city: city), nil)
         case .person(let personID):
             guard let cache else {
                 completionHandler(nil, Self.error(.notAuthenticated))
@@ -225,7 +270,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 progress.completedUnitCount = 1
             }
             return progress
-        case .asset, .timelineAsset, .personAsset, .other:
+        case .asset, .timelineAsset, .personAsset, .placeAsset, .other:
             completionHandler(nil, Self.error(.noSuchItem))
         }
         progress.completedUnitCount = 1
@@ -285,7 +330,13 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
             return ItemEnumerator(client: client, cache: cache, container: .people)
         case .person(let id):
             return ItemEnumerator(client: client, cache: cache, container: .person(id: id))
-        case .asset, .timelineAsset, .personAsset:
+        case .placesSection:
+            return ItemEnumerator(client: client, cache: cache, container: .countries)
+        case .country(let name):
+            return ItemEnumerator(client: client, cache: cache, container: .cities(country: name))
+        case .city(let country, let city):
+            return ItemEnumerator(client: client, cache: cache, container: .place(country: country, city: city))
+        case .asset, .timelineAsset, .personAsset, .placeAsset:
             throw Self.error(.noSuchItem)
         }
     }
@@ -461,6 +512,8 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     await cache.invalidate(month: yearMonth)
                 case .person(let id):
                     await cache.invalidate(person: id)
+                case .place(let country, let city):
+                    await cache.invalidate(country: country, city: city)
                 }
                 fileProviderLog.log("trashed asset \(ref.assetID, privacy: .public)")
                 completionHandler(nil)
@@ -524,6 +577,8 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
             return ItemID.month(yearMonth).identifier
         case .person(let id):
             return ItemID.person(id).identifier
+        case .place(let country, let city):
+            return ItemID.city(country: country, city: city).identifier
         }
     }
 

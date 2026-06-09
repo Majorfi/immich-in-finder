@@ -6,6 +6,7 @@ enum AssetLocation {
     case album(id: String)
     case month(yearMonth: String)
     case person(id: String)
+    case place(country: String, city: String)
 }
 
 func nameCounts(_ names: [String]) -> [String: Int] {
@@ -70,6 +71,8 @@ final class ImmichItem: NSObject, NSFileProviderItem {
             return ItemID.timelineAsset(yearMonth: yearMonth, assetID: asset.assetID).identifier
         case .person(let id):
             return ItemID.personAsset(personID: id, assetID: asset.assetID).identifier
+        case .place(let country, let city):
+            return ItemID.placeAsset(country: country, city: city, assetID: asset.assetID).identifier
         }
     }
 
@@ -81,6 +84,8 @@ final class ImmichItem: NSObject, NSFileProviderItem {
             return ItemID.month(yearMonth).identifier
         case .person(let id):
             return ItemID.person(id).identifier
+        case .place(let country, let city):
+            return ItemID.city(country: country, city: city).identifier
         }
     }
 
@@ -108,7 +113,7 @@ final class ImmichItem: NSObject, NSFileProviderItem {
         switch location {
         case .album:
             return [.allowsReading, .allowsEvicting, .allowsDeleting, .allowsReparenting]
-        case .month, .person:
+        case .month, .person, .place:
             return [.allowsReading, .allowsEvicting, .allowsDeleting]
         }
     }
@@ -240,6 +245,44 @@ final class PersonItem: NSObject, NSFileProviderItem {
     var capabilities: NSFileProviderItemCapabilities { [.allowsContentEnumerating, .allowsReading] }
     var itemVersion: NSFileProviderItemVersion {
         let version = Data("person:\(id):\(displayName)".utf8)
+        return NSFileProviderItemVersion(contentVersion: version, metadataVersion: version)
+    }
+}
+
+final class CountryItem: NSObject, NSFileProviderItem {
+    private let name: String
+
+    init(name: String) {
+        self.name = name
+    }
+
+    var itemIdentifier: NSFileProviderItemIdentifier { ItemID.country(name).identifier }
+    var parentItemIdentifier: NSFileProviderItemIdentifier { ItemID.placesSection.identifier }
+    var filename: String { name }
+    var contentType: UTType { .folder }
+    var capabilities: NSFileProviderItemCapabilities { [.allowsContentEnumerating, .allowsReading] }
+    var itemVersion: NSFileProviderItemVersion {
+        let version = Data("country:\(name)".utf8)
+        return NSFileProviderItemVersion(contentVersion: version, metadataVersion: version)
+    }
+}
+
+final class CityItem: NSObject, NSFileProviderItem {
+    private let country: String
+    private let city: String
+
+    init(country: String, city: String) {
+        self.country = country
+        self.city = city
+    }
+
+    var itemIdentifier: NSFileProviderItemIdentifier { ItemID.city(country: country, city: city).identifier }
+    var parentItemIdentifier: NSFileProviderItemIdentifier { ItemID.country(country).identifier }
+    var filename: String { city }
+    var contentType: UTType { .folder }
+    var capabilities: NSFileProviderItemCapabilities { [.allowsContentEnumerating, .allowsReading] }
+    var itemVersion: NSFileProviderItemVersion {
+        let version = Data("city:\(country):\(city)".utf8)
         return NSFileProviderItemVersion(contentVersion: version, metadataVersion: version)
     }
 }

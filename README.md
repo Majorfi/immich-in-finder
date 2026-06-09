@@ -86,6 +86,6 @@ The extension's `Info.plist` **must** include `NSExtensionFileProviderDocumentGr
 - [x] Refresh the affected container after a local write (`signalEnumerator`)
 - [x] Settings toggle to choose which top-level folders show in Finder
 - [x] `People/` view — named people as folders (facial recognition)
-- [ ] `Places/` view (geocoding) — next `SectionKind`
+- [x] `Places/` view — `Country/City/` hierarchy (geocoding)
 - [ ] Full two-way sync: pull remote changes via `enumerateChanges` + sync anchors
-- [ ] Favorites
+- [ ] `Tags/` view (`tagIds`) and Favorites

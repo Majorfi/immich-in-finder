@@ -8,6 +8,7 @@ actor ImmichCache {
     private let client: ImmichClient
     private var albumListTask: Task<[AlbumSummary], Error>?
     private var peopleListTask: Task<[PersonSummary], Error>?
+    private var cityListTask: Task<[PlaceSummary], Error>?
     private var assetTasks: [String: Task<[Asset], Error>] = [:]
 
     init(client: ImmichClient) {
@@ -65,6 +66,28 @@ actor ImmichCache {
         }
     }
 
+    func cityList() async throws -> [PlaceSummary] {
+        if let existing = cityListTask {
+            return try await existing.value
+        }
+        let client = self.client
+        let task = Task { try await client.listCities() }
+        cityListTask = task
+        do {
+            return try await task.value
+        } catch {
+            cityListTask = nil
+            throw error
+        }
+    }
+
+    func assets(country: String, city: String) async throws -> [Asset] {
+        let client = self.client
+        return try await cachedAssets(key: "place:\(country):\(city)") {
+            try await client.searchAllCity(country: country, city: city)
+        }
+    }
+
     // Write operations drop the memoized fetch for the affected container so the
     // next enumeration re-reads it from the server instead of stale data.
     func invalidateAlbumList() {
@@ -81,6 +104,10 @@ actor ImmichCache {
 
     func invalidate(person personID: String) {
         assetTasks["person:\(personID)"] = nil
+    }
+
+    func invalidate(country: String, city: String) {
+        assetTasks["place:\(country):\(city)"] = nil
     }
 
     private func cachedAssets(key: String, fetch: @Sendable @escaping () async throws -> [Asset]) async throws -> [Asset] {
@@ -107,6 +134,8 @@ extension AssetLocation {
             return try await cache.assets(month: yearMonth)
         case .person(let id):
             return try await cache.assets(person: id)
+        case .place(let country, let city):
+            return try await cache.assets(country: country, city: city)
         }
     }
 }
@@ -119,6 +148,7 @@ extension SectionKind {
         case .albums: return .albumsSection
         case .timeline: return .timelineSection
         case .people: return .peopleSection
+        case .places: return .placesSection
         }
     }
 }
@@ -132,6 +162,9 @@ enum EnumeratedContainer {
     case month(yearMonth: String)
     case people
     case person(id: String)
+    case countries
+    case cities(country: String)
+    case place(country: String, city: String)
 }
 
 final class ItemEnumerator: NSObject, NSFileProviderEnumerator {
@@ -211,6 +244,23 @@ final class ItemEnumerator: NSObject, NSFileProviderEnumerator {
                     let assets = try await cache.assets(person: id)
                     fileProviderLog.log("person \(id, privacy: .public): \(assets.count, privacy: .public) assets")
                     observer.didEnumerate(immichItems(from: assets, location: .person(id: id)))
+                    observer.finishEnumerating(upTo: nil)
+                case .countries:
+                    let places = try await cache.cityList()
+                    let countries = Set(places.map { $0.country }).sorted()
+                    fileProviderLog.log("enumerated \(countries.count, privacy: .public) countries")
+                    observer.didEnumerate(countries.map { CountryItem(name: $0) })
+                    observer.finishEnumerating(upTo: nil)
+                case .cities(let country):
+                    let places = try await cache.cityList()
+                    let cities = places.filter { $0.country == country }.map { $0.city }.sorted()
+                    fileProviderLog.log("enumerated \(cities.count, privacy: .public) cities in \(country, privacy: .public)")
+                    observer.didEnumerate(cities.map { CityItem(country: country, city: $0) })
+                    observer.finishEnumerating(upTo: nil)
+                case .place(let country, let city):
+                    let assets = try await cache.assets(country: country, city: city)
+                    fileProviderLog.log("place \(city, privacy: .public): \(assets.count, privacy: .public) assets")
+                    observer.didEnumerate(immichItems(from: assets, location: .place(country: country, city: city)))
                     observer.finishEnumerating(upTo: nil)
                 }
             } catch {

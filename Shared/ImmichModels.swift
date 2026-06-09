@@ -9,6 +9,15 @@ enum AssetType: String, Decodable, Sendable {
 
 struct ExifInfo: Decodable, Sendable {
     let fileSizeInByte: Int64?
+    let city: String?
+    let country: String?
+    let state: String?
+}
+
+// A distinct (country, city) place, derived from /api/search/cities.
+struct PlaceSummary: Sendable, Hashable {
+    let country: String
+    let city: String
 }
 
 struct Asset: Decodable, Sendable {
@@ -68,6 +77,8 @@ struct MetadataSearchRequest: Encodable, Sendable {
     let takenBefore: String?
     let albumIds: [String]?
     let personIds: [String]?
+    let city: String?
+    let country: String?
     let page: Int
     let size: Int
     let order: String
