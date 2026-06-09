@@ -257,25 +257,25 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
         case .root:
             completionHandler(RootItem(), nil)
         case .albumsSection:
-            completionHandler(SectionItem(id: ItemID.albumsSection.identifier.rawValue, name: SectionKind.albums.displayName), nil)
+            completionHandler(SectionItem(kind: .albums), nil)
         case .timelineSection:
-            completionHandler(SectionItem(id: ItemID.timelineSection.identifier.rawValue, name: SectionKind.timeline.displayName), nil)
+            completionHandler(SectionItem(kind: .timeline), nil)
         case .peopleSection:
-            completionHandler(SectionItem(id: ItemID.peopleSection.identifier.rawValue, name: SectionKind.people.displayName), nil)
+            completionHandler(SectionItem(kind: .people), nil)
         case .placesSection:
-            completionHandler(SectionItem(id: ItemID.placesSection.identifier.rawValue, name: SectionKind.places.displayName), nil)
+            completionHandler(SectionItem(kind: .places), nil)
         case .tagsSection:
-            completionHandler(SectionItem(id: ItemID.tagsSection.identifier.rawValue, name: SectionKind.tags.displayName), nil)
+            completionHandler(SectionItem(kind: .tags), nil)
         case .favoritesSection:
-            completionHandler(SectionItem(id: ItemID.favoritesSection.identifier.rawValue, name: SectionKind.favorites.displayName), nil)
+            completionHandler(SectionItem(kind: .favorites), nil)
         case .year(let year):
             completionHandler(YearItem(year: year), nil)
         case .month(let yearMonth):
             completionHandler(MonthItem(yearMonth: yearMonth), nil)
         case .country(let name):
-            completionHandler(CountryItem(name: name), nil)
+            completionHandler(FolderItem(id: .country(name), parent: .placesSection, filename: name), nil)
         case .city(let country, let city):
-            completionHandler(CityItem(country: country, city: city), nil)
+            completionHandler(FolderItem(id: .city(country: country, city: city), parent: .country(country), filename: city), nil)
         case .person(let personID):
             guard let cache else {
                 completionHandler(nil, Self.error(.notAuthenticated))
@@ -465,13 +465,13 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 let data = try Data(contentsOf: url)
                 let result = try await client.uploadAsset(filename: filename, data: data, createdAt: createdAt, modifiedAt: modifiedAt)
                 try await client.addAssets(albumID: albumID, assetIDs: [result.id])
-                await cache.invalidate(album: albumID)
+                await cache.invalidate(.album(id: albumID))
                 fileProviderLog.log("uploaded \(result.id, privacy: .public) (duplicate: \(result.isDuplicate, privacy: .public)) → album \(albumID, privacy: .public)")
                 // Return the asset as the server now reports it, so the item's
                 // filename is disambiguated and its content version (checksum)
                 // matches enumeration — avoiding a ghost entry and an immediate
                 // redundant re-download of the file we just uploaded.
-                let siblings = try await cache.assets(album: albumID)
+                let siblings = try await cache.assets(for: .album(id: albumID))
                 guard let resolved = resolveAsset(result.id, in: siblings) else {
                     completionHandler(nil, [], false, Self.error(.noSuchItem))
                     progress.completedUnitCount = 1
@@ -533,9 +533,9 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     // both albums (recoverable) rather than lost from both.
                     try await client.addAssets(albumID: destAlbum, assetIDs: [assetID])
                     try await client.removeAssets(albumID: srcAlbum, assetIDs: [assetID])
-                    await cache.invalidate(album: srcAlbum)
-                    await cache.invalidate(album: destAlbum)
-                    let siblings = try await cache.assets(album: destAlbum)
+                    await cache.invalidate(.album(id: srcAlbum))
+                    await cache.invalidate(.album(id: destAlbum))
+                    let siblings = try await cache.assets(for: .album(id: destAlbum))
                     guard let resolved = resolveAsset(assetID, in: siblings) else {
                         completionHandler(nil, [], false, Self.error(.noSuchItem))
                         progress.completedUnitCount = 1
@@ -577,23 +577,10 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
         Task {
             do {
                 try await client.trashAssets(assetIDs: [ref.assetID])
-                switch ref.location {
-                case .album(let id):
-                    await cache.invalidate(album: id)
-                case .month(let yearMonth):
-                    await cache.invalidate(month: yearMonth)
-                case .person(let id):
-                    await cache.invalidate(person: id)
-                case .place(let country, let city):
-                    await cache.invalidate(country: country, city: city)
-                case .tag(let id):
-                    await cache.invalidate(tag: id)
-                case .favorite:
-                    await cache.invalidateFavorites()
-                }
+                await cache.invalidate(ref.location)
                 fileProviderLog.log("trashed asset \(ref.assetID, privacy: .public)")
                 completionHandler(nil)
-                Self.signalChange(domain: domain, container: Self.containerIdentifier(for: ref.location))
+                Self.signalChange(domain: domain, container: ref.location.parentItemID.identifier)
             } catch {
                 fileProviderLog.error("trash failed for \(ref.assetID, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 completionHandler(error)
@@ -645,23 +632,6 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
         }
     }
 
-    private static func containerIdentifier(for location: AssetLocation) -> NSFileProviderItemIdentifier {
-        switch location {
-        case .album(let id):
-            return ItemID.album(id).identifier
-        case .month(let yearMonth):
-            return ItemID.month(yearMonth).identifier
-        case .person(let id):
-            return ItemID.person(id).identifier
-        case .place(let country, let city):
-            return ItemID.city(country: country, city: city).identifier
-        case .tag(let id):
-            return ItemID.tag(id).identifier
-        case .favorite:
-            return ItemID.favoritesSection.identifier
-        }
-    }
-
     // Names an album folder the same way enumeration does, so the item returned
     // by item(for:)/createItem/rename always matches what the Albums listing
     // reports for the same identifier.
@@ -671,16 +641,16 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
         return AlbumItem(album: album, filename: filename)
     }
 
-    private static func personItem(for person: PersonSummary, in people: [PersonSummary]) -> PersonItem {
+    private static func personItem(for person: PersonSummary, in people: [PersonSummary]) -> FolderItem {
         let counts = nameCounts(people.map { $0.name ?? "" })
         let filename = disambiguatedName(base: person.name ?? "", id: person.id, counts: counts)
-        return PersonItem(id: person.id, filename: filename)
+        return FolderItem(id: .person(person.id), parent: .peopleSection, filename: filename)
     }
 
-    private static func tagItem(for tag: TagSummary, in tags: [TagSummary]) -> TagItem {
+    private static func tagItem(for tag: TagSummary, in tags: [TagSummary]) -> FolderItem {
         let counts = nameCounts(tags.map { $0.name })
         let filename = disambiguatedName(base: tag.name, id: tag.id, counts: counts)
-        return TagItem(id: tag.id, filename: filename)
+        return FolderItem(id: .tag(tag.id), parent: .tagsSection, filename: filename)
     }
 }
 

@@ -11,6 +11,49 @@ enum AssetLocation {
     case favorite
 }
 
+extension AssetLocation {
+    // One home for the three things every location must agree on, so the
+    // identifier grammar, parenting, and cache keys can't drift across the many
+    // switches that would otherwise each mirror AssetLocation.
+
+    // The identifier of a specific asset living at this location.
+    func assetItemID(_ assetID: String) -> ItemID {
+        switch self {
+        case .album(let id):                return .asset(albumID: id, assetID: assetID)
+        case .month(let yearMonth):         return .timelineAsset(yearMonth: yearMonth, assetID: assetID)
+        case .person(let id):               return .personAsset(personID: id, assetID: assetID)
+        case .place(let country, let city): return .placeAsset(country: country, city: city, assetID: assetID)
+        case .tag(let id):                  return .tagAsset(tagID: id, assetID: assetID)
+        case .favorite:                     return .favoriteAsset(assetID: assetID)
+        }
+    }
+
+    // The container these assets are children of. Favorites are direct children
+    // of the section; every other location has an intermediate folder parent.
+    var parentItemID: ItemID {
+        switch self {
+        case .album(let id):                return .album(id)
+        case .month(let yearMonth):         return .month(yearMonth)
+        case .person(let id):               return .person(id)
+        case .place(let country, let city): return .city(country: country, city: city)
+        case .tag(let id):                  return .tag(id)
+        case .favorite:                     return .favoritesSection
+        }
+    }
+
+    // Key under which this location's asset list is memoized in ImmichCache.
+    var cacheKey: String {
+        switch self {
+        case .album(let id):                return "album:\(id)"
+        case .month(let yearMonth):         return "month:\(yearMonth)"
+        case .person(let id):               return "person:\(id)"
+        case .place(let country, let city): return "place:\(country):\(city)"
+        case .tag(let id):                  return "tag:\(id)"
+        case .favorite:                     return "favorites"
+        }
+    }
+}
+
 func nameCounts(_ names: [String]) -> [String: Int] {
     var counts: [String: Int] = [:]
     for name in names {
@@ -66,37 +109,11 @@ final class ImmichItem: NSObject, NSFileProviderItem {
     }
 
     var itemIdentifier: NSFileProviderItemIdentifier {
-        switch location {
-        case .album(let id):
-            return ItemID.asset(albumID: id, assetID: asset.assetID).identifier
-        case .month(let yearMonth):
-            return ItemID.timelineAsset(yearMonth: yearMonth, assetID: asset.assetID).identifier
-        case .person(let id):
-            return ItemID.personAsset(personID: id, assetID: asset.assetID).identifier
-        case .place(let country, let city):
-            return ItemID.placeAsset(country: country, city: city, assetID: asset.assetID).identifier
-        case .tag(let id):
-            return ItemID.tagAsset(tagID: id, assetID: asset.assetID).identifier
-        case .favorite:
-            return ItemID.favoriteAsset(assetID: asset.assetID).identifier
-        }
+        location.assetItemID(asset.assetID).identifier
     }
 
     var parentItemIdentifier: NSFileProviderItemIdentifier {
-        switch location {
-        case .album(let id):
-            return ItemID.album(id).identifier
-        case .month(let yearMonth):
-            return ItemID.month(yearMonth).identifier
-        case .person(let id):
-            return ItemID.person(id).identifier
-        case .place(let country, let city):
-            return ItemID.city(country: country, city: city).identifier
-        case .tag(let id):
-            return ItemID.tag(id).identifier
-        case .favorite:
-            return ItemID.favoritesSection.identifier
-        }
+        location.parentItemID.identifier
     }
 
     var filename: String {
@@ -171,28 +188,28 @@ final class ImmichItem: NSObject, NSFileProviderItem {
 }
 
 final class SectionItem: NSObject, NSFileProviderItem {
-    private let id: String
-    private let name: String
+    private let kind: SectionKind
 
-    init(id: String, name: String) {
-        self.id = id
-        self.name = name
+    init(kind: SectionKind) {
+        self.kind = kind
     }
 
-    var itemIdentifier: NSFileProviderItemIdentifier { NSFileProviderItemIdentifier(rawValue: id) }
+    var itemIdentifier: NSFileProviderItemIdentifier { kind.itemID.identifier }
     var parentItemIdentifier: NSFileProviderItemIdentifier { .rootContainer }
-    var filename: String { name }
+    var filename: String { kind.displayName }
     var contentType: UTType { .folder }
     var capabilities: NSFileProviderItemCapabilities {
         // Only the Albums section accepts new folders (creating an Immich album);
-        // the Timeline section is read-only.
-        if id == "section:albums" {
+        // every other section is read-only.
+        switch kind {
+        case .albums:
             return [.allowsContentEnumerating, .allowsReading, .allowsAddingSubItems]
+        default:
+            return [.allowsContentEnumerating, .allowsReading]
         }
-        return [.allowsContentEnumerating, .allowsReading]
     }
     var itemVersion: NSFileProviderItemVersion {
-        let version = Data("section:\(id)".utf8)
+        let version = Data("section:\(kind.rawValue)".utf8)
         return NSFileProviderItemVersion(contentVersion: version, metadataVersion: version)
     }
 }
@@ -233,86 +250,27 @@ final class AlbumItem: NSObject, NSFileProviderItem {
     }
 }
 
-final class PersonItem: NSObject, NSFileProviderItem {
-    private let id: String
+// A read-only enumerable folder identified by an ItemID — backs every
+// smart-view folder (person, tag, country, city). The identifier and parent
+// are passed in as ItemIDs so construction goes through the one grammar.
+final class FolderItem: NSObject, NSFileProviderItem {
+    private let id: ItemID
+    private let parent: ItemID
     private let displayName: String
 
-    init(id: String, filename: String) {
+    init(id: ItemID, parent: ItemID, filename: String) {
         self.id = id
+        self.parent = parent
         self.displayName = filename
     }
 
-    var itemIdentifier: NSFileProviderItemIdentifier {
-        ItemID.person(id).identifier
-    }
-
-    var parentItemIdentifier: NSFileProviderItemIdentifier {
-        ItemID.peopleSection.identifier
-    }
-
+    var itemIdentifier: NSFileProviderItemIdentifier { id.identifier }
+    var parentItemIdentifier: NSFileProviderItemIdentifier { parent.identifier }
     var filename: String { displayName }
     var contentType: UTType { .folder }
     var capabilities: NSFileProviderItemCapabilities { [.allowsContentEnumerating, .allowsReading] }
     var itemVersion: NSFileProviderItemVersion {
-        let version = Data("person:\(id):\(displayName)".utf8)
-        return NSFileProviderItemVersion(contentVersion: version, metadataVersion: version)
-    }
-}
-
-final class TagItem: NSObject, NSFileProviderItem {
-    private let id: String
-    private let displayName: String
-
-    init(id: String, filename: String) {
-        self.id = id
-        self.displayName = filename
-    }
-
-    var itemIdentifier: NSFileProviderItemIdentifier { ItemID.tag(id).identifier }
-    var parentItemIdentifier: NSFileProviderItemIdentifier { ItemID.tagsSection.identifier }
-    var filename: String { displayName }
-    var contentType: UTType { .folder }
-    var capabilities: NSFileProviderItemCapabilities { [.allowsContentEnumerating, .allowsReading] }
-    var itemVersion: NSFileProviderItemVersion {
-        let version = Data("tag:\(id):\(displayName)".utf8)
-        return NSFileProviderItemVersion(contentVersion: version, metadataVersion: version)
-    }
-}
-
-final class CountryItem: NSObject, NSFileProviderItem {
-    private let name: String
-
-    init(name: String) {
-        self.name = name
-    }
-
-    var itemIdentifier: NSFileProviderItemIdentifier { ItemID.country(name).identifier }
-    var parentItemIdentifier: NSFileProviderItemIdentifier { ItemID.placesSection.identifier }
-    var filename: String { name }
-    var contentType: UTType { .folder }
-    var capabilities: NSFileProviderItemCapabilities { [.allowsContentEnumerating, .allowsReading] }
-    var itemVersion: NSFileProviderItemVersion {
-        let version = Data("country:\(name)".utf8)
-        return NSFileProviderItemVersion(contentVersion: version, metadataVersion: version)
-    }
-}
-
-final class CityItem: NSObject, NSFileProviderItem {
-    private let country: String
-    private let city: String
-
-    init(country: String, city: String) {
-        self.country = country
-        self.city = city
-    }
-
-    var itemIdentifier: NSFileProviderItemIdentifier { ItemID.city(country: country, city: city).identifier }
-    var parentItemIdentifier: NSFileProviderItemIdentifier { ItemID.country(country).identifier }
-    var filename: String { city }
-    var contentType: UTType { .folder }
-    var capabilities: NSFileProviderItemCapabilities { [.allowsContentEnumerating, .allowsReading] }
-    var itemVersion: NSFileProviderItemVersion {
-        let version = Data("city:\(country):\(city)".utf8)
+        let version = Data("\(id.identifier.rawValue):\(displayName)".utf8)
         return NSFileProviderItemVersion(contentVersion: version, metadataVersion: version)
     }
 }

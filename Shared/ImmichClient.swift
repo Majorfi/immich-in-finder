@@ -186,14 +186,14 @@ struct ImmichClient: Sendable {
         var all: [PersonSummary] = []
         var page = 1
         while true {
-            let response: PeopleResponse = try await getJSON(path: "/api/people?page=\(page)&size=500")
+            let response: PeopleResponse = try await getJSON(path: "/api/people?page=\(page)&size=500&withHidden=false")
             all.append(contentsOf: response.people)
             guard response.hasNextPage == true else {
                 break
             }
             page += 1
         }
-        return all.filter { ($0.name?.isEmpty == false) && $0.isHidden != true }
+        return all.filter { $0.name?.isEmpty == false }
     }
 
     func hasAssets(after: String, before: String) async throws -> Bool {

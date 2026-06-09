@@ -11,16 +11,8 @@ enum SectionKind: String, CaseIterable, Sendable {
     case tags
     case favorites
 
-    var displayName: String {
-        switch self {
-        case .albums: return "Albums"
-        case .timeline: return "Timeline"
-        case .people: return "People"
-        case .places: return "Places"
-        case .tags: return "Tags"
-        case .favorites: return "Favorites"
-        }
-    }
+    // Every raw value is its display name lowercased, so derive it.
+    var displayName: String { rawValue.capitalized }
 }
 
 // Which sections the user chose to show, shared from the app to the extension
