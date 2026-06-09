@@ -61,12 +61,33 @@ set -a; source .env.local; set +a
 swift run immich-probe
 ```
 
+## Tests
+
+The `ImmichDriveTests` target holds unit tests for the pure logic — the
+identifier grammar, asset-location mappings, filename disambiguation, and model
+decoding — which run with no server and no signing:
+
+```bash
+xcodebuild test -scheme ImmichDriveTests -destination 'platform=macOS' \
+  CODE_SIGNING_ALLOWED=NO
+```
+
+The same target also has live, read-only API integration tests. They skip
+unless a server is configured, so set it first (the key is never committed):
+
+```bash
+set -a; source .env.local; set +a   # IMMICH_BASE_URL + IMMICH_API_KEY
+xcodebuild test -scheme ImmichDriveTests -destination 'platform=macOS' \
+  CODE_SIGNING_ALLOWED=NO
+```
+
 ## Project layout
 
 ```
 App/                  # container app (SwiftUI): config UI + domain registration
 FileProvider/         # the File Provider extension: enumeration, items, fetch
 Shared/               # Immich API client + models, compiled into both targets
+Tests/                # unit tests + live read-only API integration tests
 Sources/immich-probe/ # standalone API probe CLI
 project.yml           # XcodeGen project spec
 ```

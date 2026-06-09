@@ -86,5 +86,12 @@ schemes:
       targets:
         ImmichDriveTests: [test]
     test:
+      # Forwarded from the shell so live API tests can read them; expands via
+      # xcodebuild's process environment. Unset -> the integration tests skip.
+      environmentVariables:
+        - variable: IMMICH_BASE_URL
+          value: $(IMMICH_BASE_URL)
+        - variable: IMMICH_API_KEY
+          value: $(IMMICH_API_KEY)
       targets:
         - ImmichDriveTests
