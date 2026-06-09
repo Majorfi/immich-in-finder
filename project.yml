@@ -60,6 +60,20 @@ targets:
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).FileProviderExtension
     dependencies:
       - sdk: FileProvider.framework
+  ImmichDriveTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+      - path: Shared
+      - path: FileProvider
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: "YES"
+        PRODUCT_BUNDLE_IDENTIFIER: app.quub.immichdrive.Tests
+    dependencies:
+      - sdk: FileProvider.framework
 schemes:
   ImmichDrive:
     build:
@@ -67,3 +81,10 @@ schemes:
         ImmichDrive: all
     run:
       config: Debug
+  ImmichDriveTests:
+    build:
+      targets:
+        ImmichDriveTests: [test]
+    test:
+      targets:
+        - ImmichDriveTests
