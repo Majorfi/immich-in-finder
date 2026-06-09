@@ -105,6 +105,17 @@ struct ImmichClient: Sendable {
         _ = try await sendJSON(method: "DELETE", path: "/api/assets", body: TrashRequest(ids: assetIDs, force: false))
     }
 
+    // force=true bypasses the trash and deletes irreversibly. Not used by the
+    // extension (delete = trash); kept for callers that need a hard delete.
+    func deleteAssetsPermanently(assetIDs: [String]) async throws {
+        _ = try await sendJSON(method: "DELETE", path: "/api/assets", body: TrashRequest(ids: assetIDs, force: true))
+    }
+
+    // Removes the album grouping; the assets it held stay in the library.
+    func deleteAlbum(id: String) async throws {
+        _ = try await send(method: "DELETE", path: "/api/albums/\(id)")
+    }
+
     func searchMetadata(takenAfter: String? = nil, takenBefore: String? = nil, albumIds: [String]? = nil, personIds: [String]? = nil, tagIds: [String]? = nil, isFavorite: Bool? = nil, city: String? = nil, country: String? = nil, page: Int, size: Int, order: String) async throws -> SearchPage {
         let body = MetadataSearchRequest(takenAfter: takenAfter, takenBefore: takenBefore, albumIds: albumIds, personIds: personIds, tagIds: tagIds, isFavorite: isFavorite, city: city, country: country, page: page, size: size, order: order, withExif: true)
         let response: SearchResponse = try await postJSON(path: "/api/search/metadata", body: body)
@@ -300,6 +311,16 @@ struct ImmichClient: Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.httpBody = try JSONEncoder().encode(body)
+        let (data, response) = try await session.data(for: request)
+        try Self.ensureOK(response, path: path)
+        return data
+    }
+
+    // A bodyless request (e.g. DELETE /api/albums/{id}, which rejects a body).
+    @discardableResult
+    private func send(method: String, path: String) async throws -> Data {
+        var request = try makeRequest(path: path)
+        request.httpMethod = method
         let (data, response) = try await session.data(for: request)
         try Self.ensureOK(response, path: path)
         return data
