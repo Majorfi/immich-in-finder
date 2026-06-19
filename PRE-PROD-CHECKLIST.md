@@ -2,10 +2,14 @@
 
 > Snapshot date: 2026-06-08. Revisit target: ~2026-06-22.
 >
-> **Where we are:** the API layer and the Swift 6 build are verified end-to-end.
-> The File Provider *plumbing inside the real Finder* has **never been run** —
-> that's the main gate before trusting this in daily use. Everything below the
-> "✅ already verified" section is still open.
+> **Where we are:** the API layer, the Swift 6 build, AND the File Provider
+> plumbing inside the **real signed Finder** are now verified end-to-end against
+> a live server — read (browse, thumbnails, materialize) and write (upload).
+> Remaining gates are edge cases, resilience, and the deferred hardening.
+>
+> **2026-06-19 — first real signed run:** built & signed with the Quub team
+> (after accepting the updated Apple Program License Agreement), enabled the
+> domain, and exercised it live in Finder. Highlights checked off below.
 
 ---
 
@@ -25,38 +29,38 @@
 
 ---
 
-## 🔴 Gate 1 — Signing & a real build (currently blocked)
+## ✅ Gate 1 — Signing & a real build (DONE 2026-06-19)
 
-- [ ] Produce a **signed** build (this machine has no Apple Developer account in
-      Xcode; `CODE_SIGNING_ALLOWED=NO` only proves compilation). Either:
-  - [ ] GUI: open `ImmichDrive.xcodeproj`, set Team = **Quub (QZSF4W9PK3)**,
-        ☑ automatically manage signing on **both** targets, Run.
-  - [ ] Headless: App Store Connect API key + `xcodebuild -allowProvisioningUpdates
-        -authenticationKeyID/IssuerID/Path …`.
-- [ ] Provisioning profiles generated for `app.quub.immichdrive` **and**
+- [x] Signed build via Xcode GUI, Team = **Quub (QZSF4W9PK3)**, automatic signing
+      on both targets. (Was blocked until the updated Apple Program License
+      Agreement was accepted at developer.apple.com — that was the real lock.)
+- [x] Provisioning profiles generated for `app.quub.immichdrive` **and**
       `app.quub.immichdrive.FileProvider`.
-- [ ] App Group `QZSF4W9PK3.app.quub.immichdrive` authorized by the profile.
+- [x] App Group `QZSF4W9PK3.app.quub.immichdrive` authorized by the profile.
 - [ ] If shipping to anyone else: change `DEVELOPMENT_TEAM`, bundle IDs, and the
       App Group id in the three entitlements/`AppGroup.swift` (see README → Signing).
 
-## 🔴 Gate 2 — Real Finder run (never exercised — the big unknown)
+## ✅ Gate 2 — Real Finder run (DONE 2026-06-19 — the big unknown, resolved)
 
-- [ ] App launches; config UI saves URL + API key (App Group `UserDefaults` + Keychain).
-- [ ] **Connect & Enable in Finder** registers the domain with **no** `-2001`/`-2014`
-      (the README's documented failure mode — needs `NSExtensionFileProviderDocumentGroup`).
-- [ ] "Immich" appears in the Finder sidebar under Locations.
-- [ ] `Albums/` lists folders; names disambiguated on collision.
-- [ ] `Timeline/YYYY/MM` lists years → months → assets.
-- [ ] Thumbnails render in Finder.
-- [ ] Opening a photo materializes the original on demand.
-- [ ] File sizes show on items (the `withExif` fix).
+- [x] App launches; config UI saves URL + API key (App Group `UserDefaults` + Keychain).
+- [x] **Connect & Enable in Finder** registers the domain (no `-2001`/`-2014`);
+      "✓ Connected — 39 album(s) visible" then "✓ Enabled".
+- [x] "ImmichDrive" appears in the Finder sidebar under Locations.
+- [x] Root shows the 6 section folders; `Albums/` lists the 39 real albums.
+- [x] Album lists its assets (placeholders, on demand).
+- [x] Thumbnails render in Finder.
+- [x] Opening a photo materializes the original on demand (opened in Preview).
+- [ ] `Timeline/YYYY/MM` years → months → assets (not yet clicked through in Finder).
+- [ ] File sizes show on items (the `withExif` fix) — confirm visually.
 - [ ] Eviction frees local space (currently via deprecated `.allowsEvicting`).
 
 ## 🟠 Gate 3 — Write operations in the real Finder
 
 > API calls are proven; what's unproven is the File Provider identity/refresh plumbing.
 
-- [ ] Drag a photo into an album → uploads and appears (no ghost/duplicate entry).
+- [x] Drag a photo into an album → uploads and appears (verified 2026-06-19:
+      a 780-byte PNG dropped into an album folder uploaded to the live server and
+      was linked to the album; cleaned up after).
 - [ ] Create a folder under `Albums/` → creates an Immich album.
 - [ ] Delete a photo → lands in Immich trash (recoverable 30 d), vanishes from Finder.
 - [ ] Rename an album folder → renames the Immich album.
