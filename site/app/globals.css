@@ -1,0 +1,90 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #1d1d1f;
+  --color-fog: #56565c;
+  --color-fog-2: #86868b;
+  --color-paper: #ffffff;
+  --color-paper-2: #f5f5f7;
+  --color-line: rgba(0, 0, 0, 0.08);
+  --color-line-2: rgba(0, 0, 0, 0.14);
+  --color-accent: #0071e3;
+  --color-accent-soft: rgba(0, 113, 227, 0.1);
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
+    "Segoe UI", Inter, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: rgba(0, 113, 227, 0.18);
+}
+
+/* Soft tint behind the hero window */
+.glow {
+  background:
+    radial-gradient(56% 48% at 50% 0%, rgba(0, 113, 227, 0.09) 0%, transparent 70%),
+    radial-gradient(38% 32% at 80% 6%, rgba(125, 90, 242, 0.07) 0%, transparent 70%);
+}
+
+/* macOS-window depth on a light page */
+.hairline {
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.07),
+    0 30px 60px rgba(0, 0, 0, 0.16),
+    0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.card {
+  background: #ffffff;
+  border: 1px solid var(--color-line);
+  border-radius: 1rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.card:hover {
+  border-color: var(--color-line-2);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
+}
+
+.btn-primary {
+  background: var(--color-accent);
+  color: white;
+  transition: filter 0.15s ease;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.06);
+}
+
+.btn-ghost {
+  border: 1px solid var(--color-line-2);
+  color: var(--color-ink);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.btn-ghost:hover {
+  border-color: rgba(0, 0, 0, 0.28);
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.kbd {
+  font-family: var(--font-mono);
+  font-size: 0.78em;
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--color-line);
+  border-radius: 0.375rem;
+  padding: 0.1rem 0.4rem;
+}
