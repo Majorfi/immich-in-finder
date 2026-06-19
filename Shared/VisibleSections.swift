@@ -13,6 +13,18 @@ enum SectionKind: String, CaseIterable, Sendable {
 
     // Every raw value is its display name lowercased, so derive it.
     var displayName: String { rawValue.capitalized }
+
+    // SF Symbol shown next to the section in the app's folder list.
+    var systemImage: String {
+        switch self {
+        case .albums: return "rectangle.stack.fill"
+        case .timeline: return "calendar"
+        case .people: return "person.2.fill"
+        case .places: return "mappin.and.ellipse"
+        case .tags: return "tag.fill"
+        case .favorites: return "heart.fill"
+        }
+    }
 }
 
 // Which sections the user chose to show, shared from the app to the extension

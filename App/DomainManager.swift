@@ -15,7 +15,16 @@ enum DomainManager {
     }
 
     static func register() async throws {
-        try await NSFileProviderManager.add(domain)
+        do {
+            try await NSFileProviderManager.add(domain)
+        } catch {
+            // A domain left behind by a prior install (e.g. the app moved on disk,
+            // or an upgrade) can linger pointing at a now-missing extension host and
+            // block re-adding ours. removeAllDomains is scoped to *this* app's own
+            // domains, so clearing and retrying once is safe and self-heals that state.
+            try? await NSFileProviderManager.removeAllDomains()
+            try await NSFileProviderManager.add(domain)
+        }
     }
 
     static func unregister() async throws {
