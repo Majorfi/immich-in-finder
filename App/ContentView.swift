@@ -33,7 +33,7 @@ struct ContentView: View {
         HStack(spacing: 14) {
             appIcon
             VStack(alignment: .leading, spacing: 1) {
-                Text("Immich").font(.title2.weight(.bold))
+                Text("Findich").font(.title2.weight(.bold))
                 Text("Your photo library, in Finder")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -129,7 +129,7 @@ struct ContentView: View {
             } header: {
                 Text("Folders in Finder")
             } footer: {
-                Text("Choose which of Immich’s views appear under “Immich” in the Finder sidebar.")
+                Text("Choose which of Immich’s views appear under “Findich” in the Finder sidebar.")
             }
         }
         .formStyle(.grouped)
@@ -241,7 +241,7 @@ struct ContentView: View {
             try await DomainManager.register()
             DomainManager.reloadRoot()
             isEnabled = true
-            status = .success("Enabled — find “Immich” in your Finder sidebar (\(albumCount) albums).")
+            status = .success("Enabled — find “Findich” in your Finder sidebar (\(albumCount) albums).")
         } catch {
             status = .failure("Connected, but couldn’t enable the Finder location.")
         }

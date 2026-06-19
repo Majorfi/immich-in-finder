@@ -22,13 +22,17 @@ targets:
       - path: Shared
     settings:
       base:
+        # The .app is named Findich.app — Finder uses the container app's bundle
+        # name as the label for the File Provider location in the sidebar. Bundle
+        # id stays app.quub.immichdrive (signing/profiles already issued for it).
+        PRODUCT_NAME: Findich
         PRODUCT_BUNDLE_IDENTIFIER: app.quub.immichdrive
         CODE_SIGN_ENTITLEMENTS: App/App.entitlements
     info:
       path: App/Info.generated.plist
       properties:
-        CFBundleName: ImmichDrive
-        CFBundleDisplayName: Immich Drive
+        CFBundleName: Findich
+        CFBundleDisplayName: Findich
         CFBundlePackageType: APPL
         LSMinimumSystemVersion: "13.0"
         NSHumanReadableCopyright: ""
@@ -52,7 +56,7 @@ targets:
       path: FileProvider/Info.generated.plist
       properties:
         CFBundleName: ImmichDriveFileProvider
-        CFBundleDisplayName: Immich Drive File Provider
+        CFBundleDisplayName: Findich File Provider
         NSExtension:
           NSExtensionFileProviderDocumentGroup: QZSF4W9PK3.app.quub.immichdrive
           NSExtensionFileProviderSupportsEnumeration: true

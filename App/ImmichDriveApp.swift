@@ -3,7 +3,7 @@ import SwiftUI
 @main
 struct ImmichDriveApp: App {
     var body: some Scene {
-        Window("Immich", id: "main") {
+        Window("Findich", id: "main") {
             ContentView()
         }
         .windowResizability(.contentSize)
