@@ -120,9 +120,42 @@ function FolderGlyph({ className }: { className?: string }) {
   );
 }
 
+const SITE = "https://findich.app";
+
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      name: "Findich",
+      applicationCategory: "UtilitiesApplication",
+      operatingSystem: "macOS 13+",
+      url: SITE,
+      description:
+        "An Immich drive for the macOS Finder. Browse your self-hosted Immich library — albums, timeline, people, places, tags and favorites — as real folders, with on-demand download and drag-and-drop upload.",
+      isAccessibleForFree: true,
+      offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+      author: { "@type": "Organization", name: "Quub", url: "https://quub.app" },
+      sameAs: [GITHUB],
+    },
+    {
+      "@type": "FAQPage",
+      mainEntity: FAQ.map((item) => ({
+        "@type": "Question",
+        name: item.q,
+        acceptedAnswer: { "@type": "Answer", text: item.a },
+      })),
+    },
+  ],
+};
+
 export default function Home() {
   return (
     <main>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       {/* Nav */}
       <nav className="mx-auto flex max-w-5xl items-center justify-between px-6 py-5">
         <p className="flex items-center gap-2 text-[15px] font-semibold">
