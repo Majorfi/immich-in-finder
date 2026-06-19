@@ -1,18 +1,23 @@
 @import "tailwindcss";
 
 @theme {
-  --color-ink: #1d1d1f;
-  --color-fog: #56565c;
-  --color-fog-2: #86868b;
+  /* Neutral palette, matched to the Whimbrel sister site (Tailwind neutrals). */
+  --color-ink: #0a0a0a;
+  --color-fog: #525252;
+  --color-fog-2: #737373;
   --color-paper: #ffffff;
-  --color-paper-2: #f5f5f7;
-  --color-line: rgba(0, 0, 0, 0.08);
-  --color-line-2: rgba(0, 0, 0, 0.14);
-  --color-accent: #0071e3;
-  --color-accent-soft: rgba(0, 113, 227, 0.1);
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
-    "Segoe UI", Inter, system-ui, sans-serif;
-  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  --color-paper-2: #fafafa;
+  --color-line: #e5e5e5;
+  --color-line-2: #d4d4d4;
+  --color-accent: #1e83f7;
+  --color-accent-soft: rgba(30, 131, 247, 0.12);
+
+  --font-sans:
+    var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI",
+    system-ui, sans-serif;
+  --font-mono:
+    var(--font-geist-mono), ui-monospace, "SF Mono", SFMono-Regular, Menlo,
+    monospace;
 }
 
 html {
@@ -28,55 +33,58 @@ body {
 }
 
 ::selection {
-  background: rgba(0, 113, 227, 0.18);
+  background: rgba(30, 131, 247, 0.18);
 }
 
-/* Soft tint behind the hero window */
+/* Near-invisible brand tint behind the hero, like Whimbrel's. */
 .glow {
-  background:
-    radial-gradient(56% 48% at 50% 0%, rgba(0, 113, 227, 0.09) 0%, transparent 70%),
-    radial-gradient(38% 32% at 80% 6%, rgba(125, 90, 242, 0.07) 0%, transparent 70%);
+  background: radial-gradient(
+    60% 50% at 50% 0%,
+    rgba(30, 131, 247, 0.06) 0%,
+    transparent 70%
+  );
 }
 
-/* macOS-window depth on a light page */
+/* macOS-window depth on a light page. */
 .hairline {
   box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.07),
-    0 30px 60px rgba(0, 0, 0, 0.16),
-    0 8px 24px rgba(0, 0, 0, 0.08);
+    0 0 0 1px rgba(0, 0, 0, 0.06),
+    0 30px 60px rgba(0, 0, 0, 0.14),
+    0 8px 24px rgba(0, 0, 0, 0.07);
 }
 
+/* Flat cards with a hairline border — no shadow, like Whimbrel. */
 .card {
-  background: #ffffff;
+  background: var(--color-paper);
   border: 1px solid var(--color-line);
   border-radius: 1rem;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color 0.15s ease;
 }
 
 .card:hover {
   border-color: var(--color-line-2);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
 }
 
 .btn-primary {
-  background: var(--color-accent);
+  background: var(--color-ink);
   color: white;
-  transition: filter 0.15s ease;
+  transition: background 0.15s ease;
 }
 
 .btn-primary:hover {
-  filter: brightness(1.06);
+  background: #262626;
 }
 
 .btn-ghost {
-  border: 1px solid var(--color-line-2);
+  border: 1px solid var(--color-line);
   color: var(--color-ink);
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
 
 .btn-ghost:hover {
-  border-color: rgba(0, 0, 0, 0.28);
+  border-color: var(--color-line-2);
   background: rgba(0, 0, 0, 0.03);
 }
 

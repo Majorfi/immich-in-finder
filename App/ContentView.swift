@@ -47,17 +47,10 @@ struct ContentView: View {
     }
 
     private var appIcon: some View {
-        RoundedRectangle(cornerRadius: 13, style: .continuous)
-            .fill(LinearGradient(
-                colors: [Color(red: 0.33, green: 0.66, blue: 1.0), Color(red: 0.0, green: 0.45, blue: 0.95)],
-                startPoint: .top, endPoint: .bottom))
+        Image("AppLogo")
+            .resizable()
+            .interpolation(.high)
             .frame(width: 50, height: 50)
-            .overlay {
-                Image(systemName: "photo.stack.fill")
-                    .font(.system(size: 22, weight: .medium))
-                    .foregroundStyle(.white)
-            }
-            .shadow(color: .black.opacity(0.2), radius: 5, y: 2)
     }
 
     private var statusBadge: some View {
