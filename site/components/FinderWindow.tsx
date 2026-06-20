@@ -120,18 +120,28 @@ export default function FinderWindow() {
                         : "text-[#333]"
                     }`}
                   >
-                    <svg
-                      viewBox="0 0 16 16"
-                      className={`h-3.5 w-3.5 ${active ? "text-white" : "text-[#1e83f7]"}`}
-                      fill="currentColor"
-                      aria-hidden
-                    >
-                      {item === "Findich" || item === "Macintosh HD" ? (
-                        <path d="M8 2a6 6 0 1 1 0 12A6 6 0 0 1 8 2zm0 8.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2z" />
-                      ) : (
-                        <path d="M1 4c0-.6.4-1 1-1h4l1.2 1.5H14c.6 0 1 .4 1 1V12c0 .6-.4 1-1 1H2c-.6 0-1-.4-1-1V4z" />
-                      )}
-                    </svg>
+                    {item === "Findich" ? (
+                      <span className="grid h-4 w-4 place-items-center rounded-[4px] bg-white">
+                        <img src="/logo.svg" alt="" className="h-3.5 w-3.5" />
+                      </span>
+                    ) : (
+                      <svg
+                        viewBox="0 0 16 16"
+                        className="h-3.5 w-3.5 text-[#1e83f7]"
+                        fill="currentColor"
+                        aria-hidden
+                      >
+                        {item === "Macintosh HD" ? (
+                          <path
+                            fillRule="evenodd"
+                            clipRule="evenodd"
+                            d="M2.5 4.5h11A1.5 1.5 0 0 1 15 6v4a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 10V6a1.5 1.5 0 0 1 1.5-1.5zM11 8a1 1 0 1 0 2 0 1 1 0 0 0-2 0z"
+                          />
+                        ) : (
+                          <path d="M1 4c0-.6.4-1 1-1h4l1.2 1.5H14c.6 0 1 .4 1 1V12c0 .6-.4 1-1 1H2c-.6 0-1-.4-1-1V4z" />
+                        )}
+                      </svg>
+                    )}
                     {item}
                   </p>
                 );
