@@ -16,21 +16,10 @@ const SIDEBAR = {
 
 const FOLDERS = ["Albums", "Timeline", "People", "Places", "Tags", "Favorites"];
 
-// Gradient stand-ins for photo thumbnails (hue pairs picked to read as photos).
-const PHOTOS: Array<{ from: string; to: string; cloud?: boolean }> = [
-  { from: "#FF9F0A", to: "#FF375F" },
-  { from: "#30D158", to: "#0A84FF", cloud: true },
-  { from: "#BF5AF2", to: "#0A84FF" },
-  { from: "#FFD60A", to: "#FF9F0A" },
-  { from: "#64D2FF", to: "#5E5CE6", cloud: true },
-  { from: "#FF6482", to: "#BF5AF2" },
-  { from: "#0A84FF", to: "#30D158" },
-  { from: "#FF375F", to: "#FF9F0A", cloud: true },
-  { from: "#5E5CE6", to: "#BF5AF2" },
-  { from: "#FFD60A", to: "#30D158" },
-  { from: "#64D2FF", to: "#0A84FF" },
-  { from: "#BF5AF2", to: "#FF6482", cloud: true },
-];
+const PHOTOS = Array.from({ length: 12 }, (_, index) => ({
+  src: `/album/${index + 1}.webp`,
+  cloud: index === 1 || index === 7 || index === 11,
+}));
 
 function FolderIcon() {
   return (
@@ -170,11 +159,14 @@ export default function FinderWindow() {
             {PHOTOS.map((photo, index) => (
               <div
                 key={index}
-                className="relative aspect-square rounded-md"
-                style={{
-                  background: `linear-gradient(135deg, ${photo.from}, ${photo.to})`,
-                }}
+                className="relative aspect-square overflow-hidden rounded-md bg-black/5"
               >
+                <img
+                  src={photo.src}
+                  alt=""
+                  loading="lazy"
+                  className="h-full w-full object-cover"
+                />
                 {photo.cloud && <CloudBadge />}
               </div>
             ))}
