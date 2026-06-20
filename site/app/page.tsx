@@ -15,7 +15,7 @@ const VIEWS = [
     name: "Timeline",
     accent: "#ffb400",
     description:
-      "Your whole library by capture date — Timeline/2024/03 — straight from Immich's metadata search.",
+      "Your whole library by capture date (Timeline/2024/03), straight from Immich's metadata search.",
   },
   {
     name: "People",
@@ -45,7 +45,7 @@ const WRITES = [
   {
     title: "Drop to upload",
     description:
-      "Drag a photo into an album folder and it streams to your server — never buffered in memory, so multi-gigabyte videos are fine. Duplicates are detected by checksum and linked instead of re-uploaded.",
+      "Drag a photo into an album folder and it streams straight to your server, never buffered in memory, so multi-gigabyte videos are fine. Duplicates are caught by checksum and linked instead of re-uploaded.",
   },
   {
     title: "Delete means trash",
@@ -77,7 +77,7 @@ const STEPS = [
     description: (
       <>
         One click registers the File Provider domain. <em>Findich</em> appears
-        in the sidebar under Locations — pick which folders show up.
+        in the sidebar under Locations. Pick which folders show up.
       </>
     ),
   },
@@ -96,11 +96,11 @@ const STEPS = [
 const FAQ = [
   {
     q: "How much does it cost?",
-    a: "Pay what you want — including nothing. Take it for €0, or name a price to support development. No paywall, no nag screens; the number is entirely yours.",
+    a: "Pay what you want, including nothing. Take it for €0, or name a price to support development. No paywall, no nag screens; the price is yours to set.",
   },
   {
     q: "Why pay if it's open source?",
-    a: "You don't have to. The full source is on GitHub — build it yourself for free. Paying just skips the Xcode-and-signing dance and helps keep Findich maintained.",
+    a: "You don't have to. The full source is on GitHub, so build it yourself for free. Paying just skips the Xcode-and-signing dance and helps keep Findich maintained.",
   },
   {
     q: "Does it copy my library to the Mac?",
@@ -108,7 +108,7 @@ const FAQ = [
   },
   {
     q: "Can it destroy my photos?",
-    a: "Deleting in the Finder maps to the Immich trash — recoverable for 30 days from the web UI. The extension has no code path that permanently deletes an asset.",
+    a: "Deleting in the Finder maps to the Immich trash, recoverable for 30 days from the web UI. The extension has no code path that permanently deletes an asset.",
   },
   {
     q: "What do I need?",
@@ -116,7 +116,7 @@ const FAQ = [
   },
   {
     q: "Is this an official Immich app?",
-    a: "No — it's an independent open-source companion that talks to Immich's public REST API. Immich is a trademark of its respective owners.",
+    a: "No. It's an independent open-source companion that talks to Immich's public REST API. Immich is a trademark of its respective owners.",
   },
 ];
 
@@ -158,7 +158,7 @@ const jsonLd = {
       operatingSystem: "macOS 13+",
       url: SITE,
       description:
-        "An Immich drive for the macOS Finder. Browse your self-hosted Immich library — albums, timeline, people, places, tags and favorites — as real folders, with on-demand download and drag-and-drop upload.",
+        "An Immich drive for the macOS Finder. Browse your self-hosted Immich library (albums, timeline, people, places, tags and favorites) as real folders, with on-demand download and drag-and-drop upload.",
       isAccessibleForFree: true,
       offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
       author: {
@@ -222,8 +222,8 @@ export default function Home() {
           >
             Immich
           </a>{" "}
-          library as a native location — like iCloud Drive, but it&apos;s your
-          server, your photos, your rules.
+          library as a native location, like iCloud Drive. Except you own the
+          server.
         </p>
         <div className="mt-8 flex flex-col items-center gap-3">
           <div className="flex items-center justify-center gap-3">
@@ -266,9 +266,8 @@ export default function Home() {
             Six doors into one library
           </h2>
           <p className="mx-auto mt-3 max-w-xl text-center text-[15px] text-fog">
-            Immich organizes photos by meaning, not by folders. This bridges the
-            gap: every way Immich slices your library becomes a folder tree —
-            and you choose which ones appear.
+            Immich organizes photos by meaning, not folders. Findich turns each
+            of those views into a folder tree, and you pick which ones show up.
           </p>
           <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {VIEWS.map((view) => (
@@ -306,7 +305,7 @@ export default function Home() {
             </p>
             <ul className="mt-6 space-y-3 text-[14px] text-fog">
               {[
-                "Thumbnails and metadata stream from your server, paginated — a 4,000-asset album opens fine",
+                "Thumbnails and metadata stream from your server, paginated, so a 4,000-asset album opens fine",
                 "Originals download on open, then behave like any local file",
                 "Your library never leaves the server you run",
               ].map((line) => (
@@ -339,7 +338,7 @@ export default function Home() {
               <span className="text-fog-2"># what your Mac stores</span>
               <br />
               <span className="font-medium text-[#18c249]">
-                placeholders — until you open one
+                placeholders until you open one
               </span>
             </p>
           </div>
@@ -354,7 +353,7 @@ export default function Home() {
           </h2>
           <p className="mx-auto mt-3 max-w-xl text-center text-[15px] text-fog">
             It&apos;s not read-only. The gestures you already know map onto your
-            server — carefully.
+            server. Carefully.
           </p>
           <div className="mt-12 grid gap-4 lg:grid-cols-3">
             {WRITES.map((write) => (
@@ -398,7 +397,7 @@ export default function Home() {
             </ol>
           </div>
           <p className="mt-12 text-center text-[13px] text-fog-2">
-            Grab the signed download, or build from source — same app.
+            Grab the signed download, or build it from source. Same app.
           </p>
         </div>
       </section>
@@ -439,7 +438,7 @@ export default function Home() {
           Your photos. Your server. Your Finder.
         </h2>
         <p className="mx-auto mt-4 max-w-md text-[15px] leading-relaxed text-fog">
-          Take Findich for €0 or name a price to support the work — same app
+          Take Findich for €0 or name a price to support the work. Same app
           either way. The full source is on GitHub if you&apos;d rather build it
           yourself.
         </p>
@@ -448,7 +447,7 @@ export default function Home() {
             href={GUMROAD}
             className="btn-primary rounded-full px-6 py-3 text-[14px] font-medium"
           >
-            Get Findich — name your price
+            Get Findich
           </a>
           <a
             href={GITHUB}

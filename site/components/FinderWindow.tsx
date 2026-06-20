@@ -153,7 +153,7 @@ export default function FinderWindow() {
           </div>
 
           <p className="mt-6 mb-2.5 text-[11px] font-medium text-black/35">
-            Albums › Sitges — 239 items
+            Albums › Sitges · 239 items
           </p>
           <div className="grid grid-cols-6 gap-2.5">
             {PHOTOS.map((photo, index) => (
