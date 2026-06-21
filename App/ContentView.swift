@@ -55,15 +55,17 @@ struct ContentView: View {
 
     private var statusBadge: some View {
         let on = isEnabled
+        let color: Color = if on { .green } else { .secondary }
+        let label: String = if on { "Active" } else { "Off" }
         return HStack(spacing: 5) {
-            Circle().fill(on ? Color.green : Color.secondary).frame(width: 6, height: 6)
-            Text(on ? "Active" : "Off")
+            Circle().fill(color).frame(width: 6, height: 6)
+            Text(label)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(on ? Color.green : Color.secondary)
+                .foregroundStyle(color)
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 4)
-        .background(Capsule().fill((on ? Color.green : Color.secondary).opacity(0.12)))
+        .background(Capsule().fill(color.opacity(0.12)))
     }
 
     // MARK: - Form

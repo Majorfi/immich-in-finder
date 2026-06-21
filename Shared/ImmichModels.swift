@@ -11,7 +11,6 @@ struct ExifInfo: Decodable, Sendable {
     let fileSizeInByte: Int64?
     let city: String?
     let country: String?
-    let state: String?
 }
 
 // A distinct (country, city) place, derived from /api/search/cities.

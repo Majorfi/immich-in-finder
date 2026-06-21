@@ -10,7 +10,7 @@ final class ItemPropertyTests: XCTestCase {
                        modified: String? = "2024-01-02T00:00:00.000Z", size: Int64? = 100) -> Asset {
         Asset(assetID: id, type: type, originalFileName: name, checksum: checksum,
               fileCreatedAt: created, fileModifiedAt: modified,
-              exifInfo: size.map { ExifInfo(fileSizeInByte: $0, city: nil, country: nil, state: nil) })
+              exifInfo: size.map { ExifInfo(fileSizeInByte: $0, city: nil, country: nil) })
     }
 
     func testImmichItemCore() {

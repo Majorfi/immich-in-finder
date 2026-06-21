@@ -42,7 +42,7 @@ enum CredentialStore {
 
     private static func saveAPIKey(_ apiKey: String) {
         deleteAPIKey()
-        guard let data = apiKey.data(using: .utf8) else { return }
+        let data = Data(apiKey.utf8)
         var query = baseQuery()
         query[kSecValueData as String] = data
         SecItemAdd(query as CFDictionary, nil)

@@ -16,7 +16,7 @@ final class VisibleSectionsTests: XCTestCase {
     }
 
     func testAppGroupConstants() {
-        XCTAssertEqual(AppGroup.domainDisplayName, "Immich")
+        XCTAssertEqual(AppGroup.domainDisplayName, "Findich")
         XCTAssertFalse(AppGroup.identifier.isEmpty)
         XCTAssertFalse(AppGroup.domainIdentifier.isEmpty)
         // If this is nil the VisibleSections round-trip above silently no-ops,
