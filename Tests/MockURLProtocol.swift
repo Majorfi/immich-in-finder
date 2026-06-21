@@ -1,4 +1,5 @@
 import Foundation
+import XCTest
 
 // Intercepts requests on a session configured with it, so client tests can run
 // against canned HTTP responses with no real server. The handler inspects the
@@ -57,4 +58,27 @@ enum MockClient {
     }
 
     static func data(_ json: String) -> (Int, Data) { (200, Data(json.utf8)) }
+}
+
+enum Fixtures {
+    static func assetJSON(date: String = "2024-03-15", city: String? = nil, country: String? = nil) -> String {
+        var json = #"{"id":"x","type":"IMAGE","originalFileName":"f.jpg","fileCreatedAt":"\#(date)T00:00:00.000Z""#
+        if let city, let country {
+            json += #","exifInfo":{"city":"\#(city)","country":"\#(country)"}"#
+        }
+        json += "}"
+        return json
+    }
+}
+
+class IntegrationTestCase: XCTestCase {
+    private(set) var client: ImmichClient!
+    override func setUpWithError() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let base = env["IMMICH_BASE_URL"], let key = env["IMMICH_API_KEY"],
+              let url = URL(string: base), key.isEmpty == false else {
+            throw XCTSkip("Set IMMICH_BASE_URL and IMMICH_API_KEY to run live API tests")
+        }
+        client = ImmichClient(baseURL: url, apiKey: key)
+    }
 }

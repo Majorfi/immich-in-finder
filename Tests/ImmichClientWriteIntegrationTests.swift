@@ -5,8 +5,7 @@ import XCTest
 // was found: test albums are deleted and test assets are permanently purged.
 // Uploads are tiny 1x1 PNGs made unique per test so they never collide with
 // real library assets by checksum.
-final class ImmichClientWriteIntegrationTests: XCTestCase {
-    private var client: ImmichClient!
+final class ImmichClientWriteIntegrationTests: IntegrationTestCase {
     private var albumsToDelete: [String] = []
     private var assetsToPurge: [String] = []
     private var tempFiles: [URL] = []
@@ -20,22 +19,13 @@ final class ImmichClientWriteIntegrationTests: XCTestCase {
         return formatter
     }()
 
-    override func setUpWithError() throws {
-        let env = ProcessInfo.processInfo.environment
-        guard let base = env["IMMICH_BASE_URL"], let key = env["IMMICH_API_KEY"],
-              let url = URL(string: base), key.isEmpty == false else {
-            throw XCTSkip("Set IMMICH_BASE_URL and IMMICH_API_KEY to run live API tests")
-        }
-        client = ImmichClient(baseURL: url, apiKey: key)
-    }
-
     override func tearDown() async throws {
         guard let client else { return }
         if assetsToPurge.isEmpty == false {
             try? await client.deleteAssetsPermanently(assetIDs: assetsToPurge)
         }
         for id in albumsToDelete {
-            try? await client.deleteAlbum(id: id)
+            try? await client.deleteAlbum(ID: id)
         }
         for url in tempFiles { try? FileManager.default.removeItem(at: url) }
         albumsToDelete = []
@@ -64,29 +54,29 @@ final class ImmichClientWriteIntegrationTests: XCTestCase {
         albumsToDelete.append(albumB.albumID)
 
         let upload = try await client.uploadAsset(filename: "fptest-\(tag).png", fileURL: try uniqueFile(tag), createdAt: now, modifiedAt: now)
-        assetsToPurge.append(upload.id)
+        assetsToPurge.append(upload.ID)
         XCTAssertFalse(upload.isDuplicate)
 
-        try await client.addAssets(albumID: albumA.albumID, assetIDs: [upload.id])
+        try await client.addAssets(albumID: albumA.albumID, assetIDs: [upload.ID])
         let inA = try await client.searchAllAlbum(albumID: albumA.albumID)
-        XCTAssertTrue(inA.contains { $0.assetID == upload.id }, "uploaded asset should be in album A")
+        XCTAssertTrue(inA.contains { $0.assetID == upload.ID }, "uploaded asset should be in album A")
 
         // Move A -> B (add to dest, remove from source).
-        try await client.addAssets(albumID: albumB.albumID, assetIDs: [upload.id])
-        try await client.removeAssets(albumID: albumA.albumID, assetIDs: [upload.id])
+        try await client.addAssets(albumID: albumB.albumID, assetIDs: [upload.ID])
+        try await client.removeAssets(albumID: albumA.albumID, assetIDs: [upload.ID])
         let aAfter = try await client.searchAllAlbum(albumID: albumA.albumID)
         let bAfter = try await client.searchAllAlbum(albumID: albumB.albumID)
-        XCTAssertFalse(aAfter.contains { $0.assetID == upload.id }, "asset should be gone from A")
-        XCTAssertTrue(bAfter.contains { $0.assetID == upload.id }, "asset should be present in B")
+        XCTAssertFalse(aAfter.contains { $0.assetID == upload.ID }, "asset should be gone from A")
+        XCTAssertTrue(bAfter.contains { $0.assetID == upload.ID }, "asset should be present in B")
 
         let newName = "FPTest Renamed \(tag)"
-        let renamed = try await client.renameAlbum(id: albumB.albumID, name: newName)
+        let renamed = try await client.renameAlbum(ID: albumB.albumID, name: newName)
         XCTAssertEqual(renamed.albumName, newName)
 
         // Trash = recoverable delete; the asset leaves every album view.
-        try await client.trashAssets(assetIDs: [upload.id])
+        try await client.trashAssets(assetIDs: [upload.ID])
         let bAfterTrash = try await client.searchAllAlbum(albumID: albumB.albumID)
-        XCTAssertFalse(bAfterTrash.contains { $0.assetID == upload.id }, "trashed asset should leave the album")
+        XCTAssertFalse(bAfterTrash.contains { $0.assetID == upload.ID }, "trashed asset should leave the album")
     }
 
     // Immich dedups by checksum: re-uploading the same bytes returns the
@@ -98,11 +88,11 @@ final class ImmichClientWriteIntegrationTests: XCTestCase {
         let file = try uniqueFile(tag) // same bytes reused for both uploads
 
         let first = try await client.uploadAsset(filename: "dup-\(tag).png", fileURL: file, createdAt: now, modifiedAt: now)
-        assetsToPurge.append(first.id)
+        assetsToPurge.append(first.ID)
         XCTAssertFalse(first.isDuplicate, "first upload of fresh bytes is not a duplicate")
 
         let second = try await client.uploadAsset(filename: "dup2-\(tag).png", fileURL: file, createdAt: now, modifiedAt: now)
         XCTAssertTrue(second.isDuplicate, "identical bytes should be reported as a duplicate")
-        XCTAssertEqual(second.id, first.id, "a duplicate resolves to the existing asset id")
+        XCTAssertEqual(second.ID, first.ID, "a duplicate resolves to the existing asset id")
     }
 }

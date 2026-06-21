@@ -9,18 +9,7 @@ import XCTest
 //     CODE_SIGNING_ALLOWED=NO -only-testing:ImmichDriveTests/ImmichClientIntegrationTests
 //
 // Everything here is read-only: no asset, album, tag, or favorite is mutated.
-final class ImmichClientIntegrationTests: XCTestCase {
-    private var client: ImmichClient!
-
-    override func setUpWithError() throws {
-        let env = ProcessInfo.processInfo.environment
-        guard let base = env["IMMICH_BASE_URL"], let key = env["IMMICH_API_KEY"],
-              let url = URL(string: base), key.isEmpty == false else {
-            throw XCTSkip("Set IMMICH_BASE_URL and IMMICH_API_KEY to run live API tests")
-        }
-        client = ImmichClient(baseURL: url, apiKey: key)
-    }
-
+final class ImmichClientIntegrationTests: IntegrationTestCase {
     func testAuthAndListAlbums() async throws {
         let albums = try await client.listAlbums()
         XCTAssertFalse(albums.isEmpty, "a valid key should see at least one album")

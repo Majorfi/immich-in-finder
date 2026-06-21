@@ -33,7 +33,7 @@ final class FileProviderExtensionTests: XCTestCase {
     override func tearDown() { MockURLProtocol.handler = nil }
 
     private func mockClient() -> ImmichClient {
-        let asset = #"{"id":"x","type":"IMAGE","originalFileName":"f.jpg","fileCreatedAt":"2024-03-15T00:00:00.000Z"}"#
+        let asset = Fixtures.assetJSON()
         return MockClient.make { req in
             let path = req.url?.path ?? ""
             let method = req.httpMethod ?? "GET"

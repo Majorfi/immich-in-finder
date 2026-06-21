@@ -21,7 +21,7 @@ final class EnumeratorTests: XCTestCase {
     // One handler that answers every endpoint the enumerator touches, keyed by
     // path, so a single client serves all container types.
     private func immichLikeClient() -> ImmichClient {
-        let asset = #"{"id":"x","type":"IMAGE","originalFileName":"f.jpg","fileCreatedAt":"2024-03-15T00:00:00.000Z","exifInfo":{"city":"Paris","country":"France"}}"#
+        let asset = Fixtures.assetJSON(city: "Paris", country: "France")
         return MockClient.make { req in
             switch req.url?.path ?? "" {
             case "/api/albums":

@@ -32,12 +32,10 @@ struct Asset: Decodable, Sendable {
 }
 
 struct Album: Decodable, Sendable {
-    let albumID: String
     let albumName: String
     let assets: [Asset]
 
     enum CodingKeys: String, CodingKey {
-        case albumID = "id"
         case albumName
         case assets
     }

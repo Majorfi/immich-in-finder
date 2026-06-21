@@ -33,8 +33,8 @@ struct ImmichClient: Sendable {
         try await getJSON(path: "/api/albums")
     }
 
-    func album(id: String) async throws -> Album {
-        try await getJSON(path: "/api/albums/\(id)")
+    func album(ID: String) async throws -> Album {
+        try await getJSON(path: "/api/albums/\(ID)")
     }
 
     func downloadOriginal(assetID: String) async throws -> (Data, String?) {

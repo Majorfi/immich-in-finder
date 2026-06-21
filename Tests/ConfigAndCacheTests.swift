@@ -75,20 +75,20 @@ final class ImmichCacheTests: XCTestCase {
         // people / city / tag list memoizers share the album-list shape: a
         // second call must not refetch, and the decoded result is returned.
         let pCalls = AtomicInt()
-        let people = ImmichCache(client: MockClient.make { _ in _ = pCalls.next(); return (200, Data(#"{"people":[{"id":"p","name":"Al","isHidden":false}],"hasNextPage":false}"#.utf8)) })
+        let people = ImmichCache(client: countingClient(pCalls, json: #"{"people":[{"id":"p","name":"Al","isHidden":false}],"hasNextPage":false}"#))
         let p1 = try await people.peopleList()
         _ = try await people.peopleList()
         XCTAssertEqual(pCalls.count, 1)
         XCTAssertEqual(p1.map(\.id), ["p"])
 
         let cCalls = AtomicInt()
-        let cities = ImmichCache(client: MockClient.make { _ in _ = cCalls.next(); return (200, Data("[]".utf8)) })
+        let cities = ImmichCache(client: countingClient(cCalls, json: "[]"))
         _ = try await cities.cityList()
         _ = try await cities.cityList()
         XCTAssertEqual(cCalls.count, 1)
 
         let tCalls = AtomicInt()
-        let tags = ImmichCache(client: MockClient.make { _ in _ = tCalls.next(); return (200, Data(#"[{"id":"t","name":"T","value":"T"}]"#.utf8)) })
+        let tags = ImmichCache(client: countingClient(tCalls, json: #"[{"id":"t","name":"T","value":"T"}]"#))
         let t1 = try await tags.tagList()
         _ = try await tags.tagList()
         XCTAssertEqual(tCalls.count, 1)

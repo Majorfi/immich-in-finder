@@ -4,7 +4,7 @@ import XCTest
 // error handling, decoding, the pagination loop, multipart upload, and the
 // timeline probe helpers, which the live integration tests don't exercise.
 final class ImmichClientMockTests: XCTestCase {
-    private let asset = #"{"id":"x","type":"IMAGE","originalFileName":"f.jpg","fileCreatedAt":"2024-01-01T00:00:00.000Z"}"#
+    private let asset = Fixtures.assetJSON(date: "2024-01-01")
 
     override func tearDown() {
         MockURLProtocol.handler = nil
@@ -47,7 +47,7 @@ final class ImmichClientMockTests: XCTestCase {
     }
 
     func testListCitiesDerivesPlaces() async throws {
-        let withLoc = #"{"id":"x","type":"IMAGE","originalFileName":"f.jpg","fileCreatedAt":"2024-01-01T00:00:00.000Z","exifInfo":{"city":"Paris","country":"France"}}"#
+        let withLoc = Fixtures.assetJSON(date: "2024-01-01", city: "Paris", country: "France")
         let noLoc = asset // no exifInfo -> filtered out
         let client = MockClient.make(json: "[\(withLoc),\(noLoc)]")
         let places = try await client.listCities()
@@ -67,7 +67,7 @@ final class ImmichClientMockTests: XCTestCase {
         let calls = AtomicInt()
         let item = asset
         let client = MockClient.make { _ in
-            let next = calls.next() == 1 ? "\"2\"" : "null"
+            let next: String = if calls.next() == 1 { "\"2\"" } else { "null" }
             return (200, Data(#"{"assets":{"items":[\#(item)],"nextPage":\#(next)}}"#.utf8))
         }
         let assets = try await client.searchAllAlbum(albumID: "a")
@@ -83,7 +83,7 @@ final class ImmichClientMockTests: XCTestCase {
 
         let created = MockClient.make(json: #"{"id":"new","status":"created"}"#)
         let r1 = try await created.uploadAsset(filename: "a.png", fileURL: url, createdAt: "t", modifiedAt: "t")
-        XCTAssertEqual(r1.id, "new")
+        XCTAssertEqual(r1.ID, "new")
         XCTAssertFalse(r1.isDuplicate)
 
         let dup = MockClient.make(json: #"{"id":"old","status":"duplicate"}"#)
@@ -95,7 +95,7 @@ final class ImmichClientMockTests: XCTestCase {
         let client = MockClient.make(json: #"{"id":"al","albumName":"Name","assetCount":0}"#)
         let created = try await client.createAlbum(name: "Name")
         XCTAssertEqual(created.albumID, "al")
-        let renamed = try await client.renameAlbum(id: "al", name: "Name")
+        let renamed = try await client.renameAlbum(ID: "al", name: "Name")
         XCTAssertEqual(renamed.albumName, "Name")
     }
 
@@ -106,7 +106,7 @@ final class ImmichClientMockTests: XCTestCase {
         try await client.removeAssets(albumID: "a", assetIDs: ["x"])
         try await client.trashAssets(assetIDs: ["x"])
         try await client.deleteAssetsPermanently(assetIDs: ["x"])
-        try await client.deleteAlbum(id: "a")
+        try await client.deleteAlbum(ID: "a")
         XCTAssertEqual(log.all, [
             "PUT /api/albums/a/assets",
             "DELETE /api/albums/a/assets",
@@ -114,6 +114,11 @@ final class ImmichClientMockTests: XCTestCase {
             "DELETE /api/assets",
             "DELETE /api/albums/a",
         ])
+    }
+
+    func testTrailingSlashIsStrippedFromBaseURL() {
+        let client = ImmichClient(baseURL: URL(string: "https://mock.test/")!, apiKey: "k")
+        XCTAssertEqual(client.baseURL.absoluteString, "https://mock.test")
     }
 
     func testDownloadReturnsRawBytes() async throws {

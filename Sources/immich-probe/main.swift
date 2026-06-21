@@ -46,7 +46,7 @@ do {
         print("→ Album: \"\(first.albumName)\" — \(first.assetCount) asset(s)")
     }
 
-    let album = try await client.album(id: albumID)
+    let album = try await client.album(ID: albumID)
     print("✓ Enumerated album \"\(album.albumName)\" — \(album.assets.count) asset(s)")
     guard let asset = album.assets.first else {
         print("✗ Album has no assets. Add a photo and re-run.")

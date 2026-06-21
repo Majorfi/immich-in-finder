@@ -4,7 +4,7 @@ import FileProvider
 final class ErrorMappingTests: XCTestCase {
     private func mappedCode(_ error: Error) -> Int? {
         let ns = fileProviderError(from: error) as NSError
-        return ns.domain == NSFileProviderErrorDomain ? ns.code : nil
+        return if ns.domain == NSFileProviderErrorDomain { ns.code } else { nil }
     }
 
     func testHTTPStatusesMapToFileProviderCodes() {

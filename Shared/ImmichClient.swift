@@ -17,6 +17,8 @@ enum ImmichError: Error, CustomStringConvertible {
     }
 }
 
+enum HTTPMethod: String, Sendable { case get = "GET"; case put = "PUT"; case post = "POST"; case patch = "PATCH"; case delete = "DELETE" }
+
 struct SearchPage: Sendable {
     let assets: [Asset]
     let nextPage: String?
@@ -30,7 +32,9 @@ struct ImmichClient: Sendable {
     // session is injectable so tests can drive a mocked URLProtocol; production
     // callers get the shared session.
     init(baseURL: URL, apiKey: String, session: URLSession = .shared) {
-        self.baseURL = baseURL
+        var normalized = baseURL.absoluteString
+        while normalized.hasSuffix("/") { normalized.removeLast() }
+        self.baseURL = URL(string: normalized) ?? baseURL
         self.apiKey = apiKey
         self.session = session
     }
@@ -54,7 +58,7 @@ struct ImmichClient: Sendable {
     // MARK: - Write
 
     struct UploadResult: Sendable {
-        let id: String
+        let ID: String
         let isDuplicate: Bool
     }
 
@@ -66,7 +70,7 @@ struct ImmichClient: Sendable {
     func uploadAsset(filename: String, fileURL: URL, createdAt: String, modifiedAt: String) async throws -> UploadResult {
         let boundary = "Boundary-\(UUID().uuidString)"
         var request = try makeRequest(path: "/api/assets")
-        request.httpMethod = "POST"
+        request.httpMethod = HTTPMethod.post.rawValue
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
@@ -85,7 +89,7 @@ struct ImmichClient: Sendable {
         let (responseData, response) = try await session.upload(for: request, fromFile: envelope)
         try Self.ensureOK(response, path: "/api/assets")
         let decoded = try JSONDecoder().decode(UploadResponse.self, from: responseData)
-        return UploadResult(id: decoded.id, isDuplicate: decoded.status == "duplicate")
+        return UploadResult(ID: decoded.id, isDuplicate: decoded.status == .duplicate)
     }
 
     // Builds the multipart body on disk on a background queue (off the
@@ -123,47 +127,47 @@ struct ImmichClient: Sendable {
     }
 
     func addAssets(albumID: String, assetIDs: [String]) async throws {
-        _ = try await sendJSON(method: "PUT", path: "/api/albums/\(albumID)/assets", body: AssetIDsRequest(ids: assetIDs))
+        _ = try await sendJSON(method: .put, path: "/api/albums/\(albumID)/assets", body: AssetIDsRequest(ids: assetIDs))
     }
 
     func removeAssets(albumID: String, assetIDs: [String]) async throws {
-        _ = try await sendJSON(method: "DELETE", path: "/api/albums/\(albumID)/assets", body: AssetIDsRequest(ids: assetIDs))
+        _ = try await sendJSON(method: .delete, path: "/api/albums/\(albumID)/assets", body: AssetIDsRequest(ids: assetIDs))
     }
 
-    func renameAlbum(id: String, name: String) async throws -> AlbumSummary {
-        let data = try await sendJSON(method: "PATCH", path: "/api/albums/\(id)", body: UpdateAlbumRequest(albumName: name))
+    func renameAlbum(ID: String, name: String) async throws -> AlbumSummary {
+        let data = try await sendJSON(method: .patch, path: "/api/albums/\(ID)", body: UpdateAlbumRequest(albumName: name))
         return try JSONDecoder().decode(AlbumSummary.self, from: data)
     }
 
     func createAlbum(name: String) async throws -> AlbumSummary {
-        let data = try await sendJSON(method: "POST", path: "/api/albums", body: CreateAlbumRequest(albumName: name, assetIds: []))
+        let data = try await sendJSON(method: .post, path: "/api/albums", body: CreateAlbumRequest(albumName: name, assetIds: []))
         return try JSONDecoder().decode(AlbumSummary.self, from: data)
     }
 
     func trashAssets(assetIDs: [String]) async throws {
-        _ = try await sendJSON(method: "DELETE", path: "/api/assets", body: TrashRequest(ids: assetIDs, force: false))
+        _ = try await sendJSON(method: .delete, path: "/api/assets", body: TrashRequest(ids: assetIDs, force: false))
     }
 
     // force=true bypasses the trash and deletes irreversibly. Not used by the
     // extension (delete = trash); kept for callers that need a hard delete.
     func deleteAssetsPermanently(assetIDs: [String]) async throws {
-        _ = try await sendJSON(method: "DELETE", path: "/api/assets", body: TrashRequest(ids: assetIDs, force: true))
+        _ = try await sendJSON(method: .delete, path: "/api/assets", body: TrashRequest(ids: assetIDs, force: true))
     }
 
     // Removes the album grouping; the assets it held stay in the library.
-    func deleteAlbum(id: String) async throws {
-        _ = try await send(method: "DELETE", path: "/api/albums/\(id)")
+    func deleteAlbum(ID: String) async throws {
+        _ = try await send(method: .delete, path: "/api/albums/\(ID)")
     }
 
-    func searchMetadata(takenAfter: String? = nil, takenBefore: String? = nil, albumIds: [String]? = nil, personIds: [String]? = nil, tagIds: [String]? = nil, isFavorite: Bool? = nil, city: String? = nil, country: String? = nil, page: Int, size: Int, order: String) async throws -> SearchPage {
-        let body = MetadataSearchRequest(takenAfter: takenAfter, takenBefore: takenBefore, albumIds: albumIds, personIds: personIds, tagIds: tagIds, isFavorite: isFavorite, city: city, country: country, page: page, size: size, order: order, withExif: true)
+    func searchMetadata(takenAfter: String? = nil, takenBefore: String? = nil, albumIDs: [String]? = nil, personIDs: [String]? = nil, tagIDs: [String]? = nil, isFavorite: Bool? = nil, city: String? = nil, country: String? = nil, page: Int, size: Int, order: SortOrder) async throws -> SearchPage {
+        let body = MetadataSearchRequest(takenAfter: takenAfter, takenBefore: takenBefore, albumIds: albumIDs, personIds: personIDs, tagIds: tagIDs, isFavorite: isFavorite, city: city, country: country, page: page, size: size, order: order, withExif: true)
         let response: SearchResponse = try await postJSON(path: "/api/search/metadata", body: body)
         return SearchPage(assets: response.assets.items, nextPage: response.assets.nextPage)
     }
 
     func assetYearRange() async throws -> (oldest: Int, newest: Int)? {
-        async let oldestPage = searchMetadata(page: 1, size: 1, order: "asc")
-        async let newestPage = searchMetadata(page: 1, size: 1, order: "desc")
+        async let oldestPage = searchMetadata(page: 1, size: 1, order: .asc)
+        async let newestPage = searchMetadata(page: 1, size: 1, order: .desc)
         let (oldest, newest) = try await (oldestPage, newestPage)
         guard let oldestYear = oldest.assets.first.flatMap({ Int($0.fileCreatedAt.prefix(4)) }),
               let newestYear = newest.assets.first.flatMap({ Int($0.fileCreatedAt.prefix(4)) }) else {
@@ -175,11 +179,11 @@ struct ImmichClient: Sendable {
     // Pages through /api/search/metadata until exhausted, gathering every asset
     // matching the filter. Backs both the month (timeline) and album views, so
     // album enumeration is bounded by page size instead of one unbounded fetch.
-    private func searchAll(albumIds: [String]? = nil, personIds: [String]? = nil, tagIds: [String]? = nil, isFavorite: Bool? = nil, city: String? = nil, country: String? = nil, takenAfter: String? = nil, takenBefore: String? = nil) async throws -> [Asset] {
+    private func searchAll(albumIDs: [String]? = nil, personIDs: [String]? = nil, tagIDs: [String]? = nil, isFavorite: Bool? = nil, city: String? = nil, country: String? = nil, takenAfter: String? = nil, takenBefore: String? = nil) async throws -> [Asset] {
         var all: [Asset] = []
         var page = 1
         while true {
-            let result = try await searchMetadata(takenAfter: takenAfter, takenBefore: takenBefore, albumIds: albumIds, personIds: personIds, tagIds: tagIds, isFavorite: isFavorite, city: city, country: country, page: page, size: 250, order: "asc")
+            let result = try await searchMetadata(takenAfter: takenAfter, takenBefore: takenBefore, albumIDs: albumIDs, personIDs: personIDs, tagIDs: tagIDs, isFavorite: isFavorite, city: city, country: country, page: page, size: 250, order: .asc)
             all.append(contentsOf: result.assets)
             guard result.nextPage != nil else {
                 break
@@ -195,11 +199,11 @@ struct ImmichClient: Sendable {
     }
 
     func searchAllAlbum(albumID: String) async throws -> [Asset] {
-        try await searchAll(albumIds: [albumID])
+        try await searchAll(albumIDs: [albumID])
     }
 
     func searchAllPerson(personID: String) async throws -> [Asset] {
-        try await searchAll(personIds: [personID])
+        try await searchAll(personIDs: [personID])
     }
 
     func searchAllCity(country: String, city: String) async throws -> [Asset] {
@@ -207,7 +211,7 @@ struct ImmichClient: Sendable {
     }
 
     func searchAllTag(tagID: String) async throws -> [Asset] {
-        try await searchAll(tagIds: [tagID])
+        try await searchAll(tagIDs: [tagID])
     }
 
     func listTags() async throws -> [TagSummary] {
@@ -247,7 +251,7 @@ struct ImmichClient: Sendable {
     }
 
     func hasAssets(after: String, before: String) async throws -> Bool {
-        let page = try await searchMetadata(takenAfter: after, takenBefore: before, page: 1, size: 1, order: "asc")
+        let page = try await searchMetadata(takenAfter: after, takenBefore: before, page: 1, size: 1, order: .asc)
         return page.assets.isEmpty == false
     }
 
@@ -337,16 +341,16 @@ struct ImmichClient: Sendable {
     }
 
     private func postJSON<Body: Encodable, T: Decodable>(path: String, body: Body) async throws -> T {
-        let data = try await sendJSON(method: "POST", path: path, body: body)
+        let data = try await sendJSON(method: .post, path: path, body: body)
         return try JSONDecoder().decode(T.self, from: data)
     }
 
     // Sends a JSON body with an arbitrary method and returns the raw response
     // data (callers decode it or ignore it). Used by POST/PUT/DELETE writes.
     @discardableResult
-    private func sendJSON<Body: Encodable>(method: String, path: String, body: Body) async throws -> Data {
+    private func sendJSON<Body: Encodable>(method: HTTPMethod, path: String, body: Body) async throws -> Data {
         var request = try makeRequest(path: path)
-        request.httpMethod = method
+        request.httpMethod = method.rawValue
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.httpBody = try JSONEncoder().encode(body)
@@ -357,9 +361,9 @@ struct ImmichClient: Sendable {
 
     // A bodyless request (e.g. DELETE /api/albums/{id}, which rejects a body).
     @discardableResult
-    private func send(method: String, path: String) async throws -> Data {
+    private func send(method: HTTPMethod, path: String) async throws -> Data {
         var request = try makeRequest(path: path)
-        request.httpMethod = method
+        request.httpMethod = method.rawValue
         let (data, response) = try await session.data(for: request)
         try Self.ensureOK(response, path: path)
         return data

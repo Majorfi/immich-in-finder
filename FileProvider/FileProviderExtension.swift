@@ -489,15 +489,15 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
         Task {
             do {
                 let result = try await client.uploadAsset(filename: filename, fileURL: url, createdAt: createdAt, modifiedAt: modifiedAt)
-                try await client.addAssets(albumID: albumID, assetIDs: [result.id])
+                try await client.addAssets(albumID: albumID, assetIDs: [result.ID])
                 await cache.invalidate(.album(id: albumID))
-                fileProviderLog.log("uploaded \(result.id, privacy: .public) (duplicate: \(result.isDuplicate, privacy: .public)) → album \(albumID, privacy: .public)")
+                fileProviderLog.log("uploaded \(result.ID, privacy: .public) (duplicate: \(result.isDuplicate, privacy: .public)) → album \(albumID, privacy: .public)")
                 // Return the asset as the server now reports it, so the item's
                 // filename is disambiguated and its content version (checksum)
                 // matches enumeration — avoiding a ghost entry and an immediate
                 // redundant re-download of the file we just uploaded.
                 let siblings = try await cache.assets(for: .album(id: albumID))
-                guard let resolved = resolveAsset(result.id, in: siblings) else {
+                guard let resolved = resolveAsset(result.ID, in: siblings) else {
                     completionHandler(nil, [], false, Self.error(.noSuchItem))
                     progress.completedUnitCount = 1
                     return
@@ -531,7 +531,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
             let newName = item.filename
             Task {
                 do {
-                    let album = try await client.renameAlbum(id: albumID, name: newName)
+                    let album = try await client.renameAlbum(ID: albumID, name: newName)
                     await cache.invalidateAlbumList()
                     fileProviderLog.log("renamed album \(albumID, privacy: .public)")
                     let albums = try await cache.albumList()

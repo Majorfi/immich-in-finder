@@ -76,6 +76,8 @@ struct PeopleResponse: Decodable, Sendable {
     let hasNextPage: Bool?
 }
 
+enum SortOrder: String, Encodable, Sendable { case asc; case desc }
+
 struct MetadataSearchRequest: Encodable, Sendable {
     let takenAfter: String?
     let takenBefore: String?
@@ -87,17 +89,29 @@ struct MetadataSearchRequest: Encodable, Sendable {
     let country: String?
     let page: Int
     let size: Int
-    let order: String
+    let order: SortOrder
     // Required for the server to include exifInfo (file size) in the results;
     // without it documentSize is unavailable on enumerated items.
     let withExif: Bool
+}
+
+enum UploadStatus: String, Decodable, Sendable {
+    case created
+    case replaced
+    case duplicate
+    case unknown
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = UploadStatus(rawValue: raw) ?? .unknown
+    }
 }
 
 // POST /api/assets returns the new id plus whether the server recognised the
 // upload as a checksum duplicate of an asset it already holds.
 struct UploadResponse: Decodable, Sendable {
     let id: String
-    let status: String
+    let status: UploadStatus
 }
 
 struct AssetIDsRequest: Encodable, Sendable {
