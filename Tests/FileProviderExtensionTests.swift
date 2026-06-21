@@ -32,29 +32,8 @@ final class FileProviderExtensionTests: XCTestCase {
 
     override func tearDown() { MockURLProtocol.handler = nil }
 
-    private func mockClient() -> ImmichClient {
-        let asset = Fixtures.assetJSON()
-        return MockClient.make { req in
-            let path = req.url?.path ?? ""
-            let method = req.httpMethod ?? "GET"
-            switch (path, method) {
-            case ("/api/albums", "GET"): return (200, Data(#"[{"id":"a","albumName":"Trip","assetCount":1}]"#.utf8))
-            case ("/api/albums", "POST"): return (200, Data(#"{"id":"newAL","albumName":"New","assetCount":0}"#.utf8))
-            case ("/api/assets", "POST"): return (200, Data(#"{"id":"x","status":"created"}"#.utf8))
-            case ("/api/search/metadata", _): return (200, Data("{\"assets\":{\"items\":[\(asset)],\"nextPage\":null}}".utf8))
-            case ("/api/people", _): return (200, Data(#"{"people":[{"id":"p","name":"Al","isHidden":false}],"hasNextPage":false}"#.utf8))
-            case ("/api/search/cities", _): return (200, Data("[]".utf8))
-            case ("/api/tags", _): return (200, Data(#"[{"id":"t","name":"T","value":"T"}]"#.utf8))
-            default:
-                if path.hasSuffix("/original") || path.hasSuffix("/thumbnail") { return (200, Data([0xFF, 0xD8])) }
-                if path.hasPrefix("/api/albums/") && method == "PATCH" { return (200, Data(#"{"id":"a","albumName":"Renamed","assetCount":0}"#.utf8)) }
-                return (200, Data("".utf8)) // album/asset mutations: 200, no body
-            }
-        }
-    }
-
     private func makeExtension() -> FileProviderExtension {
-        let client = mockClient()
+        let client = MockClient.immichLike(writes: true)
         return FileProviderExtension(domain: domain, client: client, cache: ImmichCache(client: client))
     }
 
@@ -83,7 +62,7 @@ final class FileProviderExtensionTests: XCTestCase {
 
     func testItemForAlbumPersonTagAndAsset() async {
         let ext = makeExtension()
-        let expected = ["album:a": "Trip", "person:p": "Al", "tag:t": "T", "asset:a:x": "f.jpg"]
+        let expected = ["album:a": "Trip", "person:p": "Alice", "tag:t": "Trip", "asset:a:x": "f.jpg"]
         for (raw, filename) in expected {
             let outcome = await item(ext, raw)
             XCTAssertTrue(outcome.ok, "\(raw) errored: \(outcome.error ?? "")")

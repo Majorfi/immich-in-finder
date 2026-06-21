@@ -60,6 +60,43 @@ enum MockClient {
     static func data(_ json: String) -> (Int, Data) { (200, Data(json.utf8)) }
 }
 
+extension MockClient {
+    // One handler answering every Immich endpoint the enumerator and extension
+    // touch, keyed by (path, method).
+    static func immichLike(citiesReturnAsset: Bool = false, writes: Bool = false) -> ImmichClient {
+        let asset = Fixtures.assetJSON(city: "Paris", country: "France")
+        return make { req in
+            let path = req.url?.path ?? ""
+            let method = req.httpMethod ?? "GET"
+            switch (path, method) {
+            case ("/api/albums", "POST") where writes:
+                return data(#"{"id":"newAL","albumName":"New","assetCount":0}"#)
+            case ("/api/assets", "POST") where writes:
+                return data(#"{"id":"x","status":"created"}"#)
+            case ("/api/albums", _):
+                return data(#"[{"id":"a","albumName":"Trip","assetCount":1}]"#)
+            case ("/api/search/metadata", _):
+                return data("{\"assets\":{\"items\":[\(asset)],\"nextPage\":null}}")
+            case ("/api/people", _):
+                return data(#"{"people":[{"id":"p","name":"Alice","isHidden":false}],"hasNextPage":false}"#)
+            case ("/api/search/cities", _):
+                if citiesReturnAsset {
+                    return data("[\(asset)]")
+                } else {
+                    return data("[]")
+                }
+            case ("/api/tags", _):
+                return data(#"[{"id":"t","name":"Trip","value":"Trip"}]"#)
+            default:
+                if path.hasSuffix("/original") || path.hasSuffix("/thumbnail") { return (200, Data([0xFF, 0xD8])) }
+                if writes && path.hasPrefix("/api/albums/") && method == "PATCH" { return data(#"{"id":"a","albumName":"Renamed","assetCount":0}"#) }
+                if writes { return (200, Data("".utf8)) }
+                return data("{}")
+            }
+        }
+    }
+}
+
 enum Fixtures {
     static func assetJSON(date: String = "2024-03-15", city: String? = nil, country: String? = nil) -> String {
         var json = #"{"id":"x","type":"IMAGE","originalFileName":"f.jpg","fileCreatedAt":"\#(date)T00:00:00.000Z""#

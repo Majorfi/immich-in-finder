@@ -18,30 +18,8 @@ final class MockEnumObserver: NSObject, NSFileProviderEnumerationObserver {
 final class EnumeratorTests: XCTestCase {
     override func tearDown() { MockURLProtocol.handler = nil }
 
-    // One handler that answers every endpoint the enumerator touches, keyed by
-    // path, so a single client serves all container types.
-    private func immichLikeClient() -> ImmichClient {
-        let asset = Fixtures.assetJSON(city: "Paris", country: "France")
-        return MockClient.make { req in
-            switch req.url?.path ?? "" {
-            case "/api/albums":
-                return (200, Data(#"[{"id":"a","albumName":"Trip","assetCount":1}]"#.utf8))
-            case "/api/search/metadata":
-                return (200, Data("{\"assets\":{\"items\":[\(asset)],\"nextPage\":null}}".utf8))
-            case "/api/people":
-                return (200, Data(#"{"people":[{"id":"p","name":"Alice","isHidden":false}],"hasNextPage":false}"#.utf8))
-            case "/api/search/cities":
-                return (200, Data("[\(asset)]".utf8))
-            case "/api/tags":
-                return (200, Data(#"[{"id":"t","name":"Trip","value":"Trip"}]"#.utf8))
-            default:
-                return (200, Data("{}".utf8))
-            }
-        }
-    }
-
     private func enumerate(_ container: EnumeratedContainer) async -> (items: [NSFileProviderItem], error: Error?) {
-        let client = immichLikeClient()
+        let client = MockClient.immichLike(citiesReturnAsset: true)
         let enumerator = ItemEnumerator(client: client, cache: ImmichCache(client: client), container: container)
         let observer = MockEnumObserver()
         enumerator.enumerateItems(for: observer, startingAt: NSFileProviderPage(Data("p".utf8)))
@@ -102,7 +80,7 @@ final class EnumeratorTests: XCTestCase {
     }
 
     func testSyncAnchorIsTheStableSentinel() async {
-        let client = immichLikeClient()
+        let client = MockClient.immichLike(citiesReturnAsset: true)
         let enumerator = ItemEnumerator(client: client, cache: ImmichCache(client: client), container: .albums)
         let anchorExp = expectation(description: "anchor")
         enumerator.currentSyncAnchor { anchor in
