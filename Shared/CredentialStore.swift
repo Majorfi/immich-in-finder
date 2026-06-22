@@ -41,11 +41,14 @@ enum CredentialStore {
     }
 
     private static func saveAPIKey(_ apiKey: String) {
-        deleteAPIKey()
         let data = Data(apiKey.utf8)
-        var query = baseQuery()
-        query[kSecValueData as String] = data
-        SecItemAdd(query as CFDictionary, nil)
+        let attributes: [String: Any] = [kSecValueData as String: data]
+        let status = SecItemUpdate(baseQuery() as CFDictionary, attributes as CFDictionary)
+        if status == errSecItemNotFound {
+            var query = baseQuery()
+            query[kSecValueData as String] = data
+            SecItemAdd(query as CFDictionary, nil)
+        }
     }
 
     private static func loadAPIKey() -> String? {

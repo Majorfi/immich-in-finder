@@ -36,4 +36,11 @@ enum DomainManager {
     static func reloadRoot() {
         NSFileProviderManager(for: domain)?.signalEnumerator(for: .rootContainer) { _ in }
     }
+
+    // A credential change needs a fresh extension: the running one caches its
+    // ImmichClient from the credentials read at init. Remove + re-add rebuilds it.
+    static func reload() async throws {
+        try? await NSFileProviderManager.remove(domain)
+        try await register()
+    }
 }

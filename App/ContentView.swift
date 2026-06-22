@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct ContentView: View {
     @State private var baseURL = ""
@@ -92,6 +93,16 @@ struct ContentView: View {
                         }
                         .textFieldStyle(.plain)
                         .autocorrectionDisabled()
+
+                        Button {
+                            guard let pasted = NSPasteboard.general.string(forType: .string) else { return }
+                            apiKey = pasted.trimmingCharacters(in: .whitespacesAndNewlines)
+                        } label: {
+                            Image(systemName: "doc.on.clipboard")
+                        }
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(.secondary)
+                        .help("Paste API key")
 
                         Button {
                             showKey.toggle()
@@ -230,10 +241,16 @@ struct ContentView: View {
             return
         }
 
+        let previous = CredentialStore.load()
         CredentialStore.save(baseURL: baseURL, apiKey: apiKey)
         VisibleSections.save(visibleSections)
+        let credentialsChanged = previous?.apiKey != apiKey || previous?.baseURL.absoluteString != baseURL
         do {
-            try await DomainManager.register()
+            if isEnabled && credentialsChanged {
+                try await DomainManager.reload()
+            } else {
+                try await DomainManager.register()
+            }
             DomainManager.reloadRoot()
             isEnabled = true
             status = .success("Enabled — find “Findich” in your Finder sidebar (\(albumCount) albums).")
