@@ -4,7 +4,7 @@
 
 Immich organizes photos by timeline, albums, people, and places — not by folders. This project bridges that gap with an Apple **File Provider** extension that presents your Immich library as a Finder location, with **on-demand download**: files appear as placeholders and only download when you open them.
 
-**Status:** working and read-write. Albums, Timeline, People, Places, Tags, and Favorites appear as folders; browsing, Finder thumbnails, and on-demand download of originals all work — and uploads, album create/rename, moves, and deletes sync back to Immich.
+**Status:** working and read-write. Albums, timeline, people, places, tags, and favorites show up as folders, with on-demand downloads and Finder thumbnails. Uploads, renames, moves, and deletes sync back to Immich.
 
 ```
 Findich/                     ← appears in the Finder sidebar
@@ -21,6 +21,8 @@ Findich/                     ← appears in the Finder sidebar
 - A small **container app** (`ImmichDrive`) registers a File Provider _domain_ and stores your server URL + API key (App Group `UserDefaults` + Keychain).
 - A **File Provider extension** (`NSFileProviderReplicatedExtension`) does the real work: enumerating albums and assets, serving thumbnails, and downloading originals on demand.
 - Both talk to Immich's REST API (`/api/albums`, `/api/assets/{id}/original`, `/api/assets/{id}/thumbnail`, …) using the `x-api-key` header.
+
+Note: photos Immich indexes from an **external library** are read-only. Findich browses and downloads them like any other asset, but it can't write them back; Immich owns those files and refreshes them from the source itself. Findich doesn't single them out in Finder yet, so a delete or move you try there just won't take.
 
 ## Requirements
 
