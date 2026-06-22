@@ -55,8 +55,8 @@ final class ImmichCacheTests: XCTestCase {
         let calls = AtomicInt()
         let page = #"{"assets":{"items":[],"nextPage":null}}"#
         let cache = ImmichCache(client: countingClient(calls, json: page))
-        _ = try await cache.assets(for: .album(id: "a"))
-        _ = try await cache.assets(for: .album(id: "a"))   // cached
+        _ = try await cache.assets(for: .favorite)
+        _ = try await cache.assets(for: .favorite)          // cached
         _ = try await cache.assets(for: .tag(id: "t"))      // different key -> new fetch
         XCTAssertEqual(calls.count, 2)
     }

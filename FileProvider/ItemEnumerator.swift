@@ -11,6 +11,8 @@ actor ImmichCache {
     private var cityListTask: Task<[PlaceSummary], Error>?
     private var tagListTask: Task<[TagSummary], Error>?
     private var assetTasks: [String: Task<[Asset], Error>] = [:]
+    private var timelineYearsTask: Task<[Int], Error>?
+    private var timelineMonthsTasks: [String: Task<[String], Never>] = [:]
 
     init(client: ImmichClient) {
         self.client = client
@@ -92,6 +94,36 @@ actor ImmichCache {
         }
     }
 
+    // The timeline year/month lists each cost one server probe per period, so
+    // memoize them like the other containers instead of re-probing every pass.
+    func timelineYears() async throws -> [Int] {
+        if let existing = timelineYearsTask {
+            return try await existing.value
+        }
+        let client = self.client
+        let task = Task { () async throws -> [Int] in
+            guard let range = try await client.assetYearRange() else { return [] }
+            return await client.nonEmptyYears(oldest: range.oldest, newest: range.newest)
+        }
+        timelineYearsTask = task
+        do {
+            return try await task.value
+        } catch {
+            timelineYearsTask = nil
+            throw error
+        }
+    }
+
+    func timelineMonths(year: String) async -> [String] {
+        if let existing = timelineMonthsTasks[year] {
+            return await existing.value
+        }
+        let client = self.client
+        let task = Task { await client.nonEmptyMonths(year: year) }
+        timelineMonthsTasks[year] = task
+        return await task.value
+    }
+
     // Write operations drop the memoized fetch for the affected container so the
     // next enumeration re-reads it from the server instead of stale data.
     func invalidateAlbumList() {
@@ -100,6 +132,11 @@ actor ImmichCache {
 
     func invalidate(_ location: AssetLocation) {
         assetTasks[location.cacheKey] = nil
+    }
+
+    func invalidateTimeline() {
+        timelineYearsTask = nil
+        timelineMonthsTasks = [:]
     }
 
     private func cachedAssets(key: String, fetch: @Sendable @escaping () async throws -> [Asset]) async throws -> [Asset] {
@@ -173,7 +210,6 @@ final class ItemEnumerator: NSObject, NSFileProviderEnumerator {
         // capture self (a non-Sendable NSObject), per Swift 6 region isolation.
         let container = self.container
         let cache = self.cache
-        let client = self.client
         // The system's enumeration observer is not Sendable but is documented to
         // accept callbacks from any thread, so crossing into the Task is safe.
         nonisolated(unsafe) let observer = observer
@@ -201,17 +237,12 @@ final class ItemEnumerator: NSObject, NSFileProviderEnumerator {
                     observer.didEnumerate(immichItems(from: assets, location: .album(id: id)))
                     observer.finishEnumerating(upTo: nil)
                 case .years:
-                    guard let range = try await client.assetYearRange() else {
-                        observer.didEnumerate([])
-                        observer.finishEnumerating(upTo: nil)
-                        return
-                    }
-                    let years = await client.nonEmptyYears(oldest: range.oldest, newest: range.newest)
+                    let years = try await cache.timelineYears()
                     fileProviderLog.log("enumerated \(years.count, privacy: .public) timeline years")
                     observer.didEnumerate(years.map { YearItem(year: String($0)) })
                     observer.finishEnumerating(upTo: nil)
                 case .months(let year):
-                    let months = await client.nonEmptyMonths(year: year)
+                    let months = await cache.timelineMonths(year: year)
                     fileProviderLog.log("enumerated \(months.count, privacy: .public) months in \(year, privacy: .public)")
                     observer.didEnumerate(months.map { MonthItem(yearMonth: $0) })
                     observer.finishEnumerating(upTo: nil)
@@ -272,6 +303,7 @@ final class ItemEnumerator: NSObject, NSFileProviderEnumerator {
                     observer.finishEnumerating(upTo: nil)
                 }
             } catch {
+                fileProviderLog.error("enumeration failed for \(String(describing: container), privacy: .public): \(String(describing: error), privacy: .public)")
                 observer.finishEnumeratingWithError(fileProviderError(from: error))
             }
         }

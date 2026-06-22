@@ -183,9 +183,9 @@ struct ImmichClient: Sendable {
         var all: [Asset] = []
         var page = 1
         while true {
-            let result = try await searchMetadata(takenAfter: takenAfter, takenBefore: takenBefore, albumIDs: albumIDs, personIDs: personIDs, tagIDs: tagIDs, isFavorite: isFavorite, city: city, country: country, page: page, size: 250, order: .asc)
+            let result = try await searchMetadata(takenAfter: takenAfter, takenBefore: takenBefore, albumIDs: albumIDs, personIDs: personIDs, tagIDs: tagIDs, isFavorite: isFavorite, city: city, country: country, page: page, size: 1000, order: .asc)
             all.append(contentsOf: result.assets)
-            guard result.nextPage != nil else {
+            guard result.nextPage != nil, result.assets.isEmpty == false else {
                 break
             }
             page += 1
@@ -198,8 +198,12 @@ struct ImmichClient: Sendable {
         return try await searchAll(takenAfter: bounds.after, takenBefore: bounds.before)
     }
 
+    // Album membership comes from the album endpoint, not /search/metadata: the
+    // latter applies the default visibility filter and drops archived assets, so
+    // an album of archived photos would enumerate empty.
     func searchAllAlbum(albumID: String) async throws -> [Asset] {
-        try await searchAll(albumIDs: [albumID])
+        let detail: AlbumDetail = try await getJSON(path: "/api/albums/\(albumID)")
+        return detail.assets
     }
 
     func searchAllPerson(personID: String) async throws -> [Asset] {

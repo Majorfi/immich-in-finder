@@ -491,6 +491,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 let result = try await client.uploadAsset(filename: filename, fileURL: url, createdAt: createdAt, modifiedAt: modifiedAt)
                 try await client.addAssets(albumID: albumID, assetIDs: [result.ID])
                 await cache.invalidate(.album(id: albumID))
+                await cache.invalidateTimeline()
                 fileProviderLog.log("uploaded \(result.ID, privacy: .public) (duplicate: \(result.isDuplicate, privacy: .public)) → album \(albumID, privacy: .public)")
                 // Return the asset as the server now reports it, so the item's
                 // filename is disambiguated and its content version (checksum)
@@ -603,6 +604,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
             do {
                 try await client.trashAssets(assetIDs: [ref.assetID])
                 await cache.invalidate(ref.location)
+                await cache.invalidateTimeline()
                 fileProviderLog.log("trashed asset \(ref.assetID, privacy: .public)")
                 completionHandler(nil)
                 Self.signalChange(domain: domain, container: ref.location.parentItemID.identifier)

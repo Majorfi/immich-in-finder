@@ -87,6 +87,8 @@ extension MockClient {
                 }
             case ("/api/tags", _):
                 return data(#"[{"id":"t","name":"Trip","value":"Trip"}]"#)
+            case (let p, "GET") where p.hasPrefix("/api/albums/") && p.hasSuffix("/assets") == false:
+                return data(#"{"id":"a","albumName":"Trip","assetCount":1,"assets":[\#(asset)]}"#)
             default:
                 if path.hasSuffix("/original") || path.hasSuffix("/thumbnail") { return (200, Data([0xFF, 0xD8])) }
                 if writes && path.hasPrefix("/api/albums/") && method == "PATCH" { return data(#"{"id":"a","albumName":"Renamed","assetCount":0}"#) }

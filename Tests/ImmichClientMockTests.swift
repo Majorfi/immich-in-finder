@@ -70,7 +70,7 @@ final class ImmichClientMockTests: XCTestCase {
             let next: String = if calls.next() == 1 { "\"2\"" } else { "null" }
             return (200, Data(#"{"assets":{"items":[\#(item)],"nextPage":\#(next)}}"#.utf8))
         }
-        let assets = try await client.searchAllAlbum(albumID: "a")
+        let assets = try await client.searchAllFavorites()
         XCTAssertEqual(assets.count, 2, "two pages, one item each")
     }
 

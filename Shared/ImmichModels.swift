@@ -56,6 +56,12 @@ struct AlbumSummary: Decodable, Sendable {
     }
 }
 
+// GET /api/albums/{id} returns the album's full membership (incl. archived),
+// unlike /search/metadata which filters by visibility.
+struct AlbumDetail: Decodable, Sendable {
+    let assets: [Asset]
+}
+
 struct SearchResponse: Decodable, Sendable {
     let assets: SearchAssets
 }
