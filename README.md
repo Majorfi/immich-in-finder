@@ -4,14 +4,16 @@
 
 Immich organizes photos by timeline, albums, people, and places — not by folders. This project bridges that gap with an Apple **File Provider** extension that presents your Immich library as a Finder location, with **on-demand download**: files appear as placeholders and only download when you open them.
 
-**Status:** early, read-only. Your **albums show up as folders**; browsing, Finder thumbnails, and on-demand materialization of original files all work.
+**Status:** working and read-write. Albums, Timeline, People, Places, Tags, and Favorites appear as folders; browsing, Finder thumbnails, and on-demand download of originals all work — and uploads, album create/rename, moves, and deletes sync back to Immich.
 
 ```
 Findich/                     ← appears in the Finder sidebar
-├── Sitges/                  ← an album
-│   ├── 20181013-1513-000.jpg
-│   └── ...
-└── <other albums>/
+├── Albums/                  ← each Immich album, a folder of originals
+├── Timeline/2024/03/        ← every photo, by year and month
+├── People/                  ← named faces
+├── Places/France/Paris/     ← country / city
+├── Tags/
+└── Favorites/
 ```
 
 ## How it works
@@ -46,7 +48,7 @@ xcodegen generate
 open ImmichDrive.xcodeproj
 ```
 
-In the app window, enter your server URL + API key and click **Connect & Enable in Finder**. "Immich" appears in the Finder sidebar under _Locations_.
+In the app window, enter your server URL + API key and click **Connect & Enable**. "Findich" appears in the Finder sidebar under _Locations_.
 
 ## Signing
 
@@ -72,7 +74,7 @@ xcodebuild test -scheme ImmichDriveTests -destination 'platform=macOS' \
   CODE_SIGNING_ALLOWED=NO
 ```
 
-The same target also has live, read-only API integration tests. They skip
+The same target also has live API integration tests. They skip
 unless a server is configured, so set it first (the key is never committed):
 
 ```bash
@@ -87,7 +89,7 @@ xcodebuild test -scheme ImmichDriveTests -destination 'platform=macOS' \
 App/                  # container app (SwiftUI): config UI + domain registration
 FileProvider/         # the File Provider extension: enumeration, items, fetch
 Shared/               # Immich API client + models, compiled into both targets
-Tests/                # unit tests + live read-only API integration tests
+Tests/                # unit tests + live API integration tests
 Sources/immich-probe/ # standalone API probe CLI
 project.yml           # XcodeGen project spec
 ```
@@ -98,7 +100,7 @@ The extension's `Info.plist` **must** include `NSExtensionFileProviderDocumentGr
 
 ## Roadmap
 
-- [x] Albums as folders (read-only, on-demand originals + thumbnails)
+- [x] Albums as folders (on-demand originals + thumbnails)
 - [x] Filename / album-name collision handling
 - [x] `Timeline/YYYY/MM` view (via `/api/search/metadata`)
 - [x] Swift 6 strict-concurrency hardening of the extension
@@ -111,3 +113,25 @@ The extension's `Info.plist` **must** include `NSExtensionFileProviderDocumentGr
 - [x] `Tags/` view — tags as folders (`tagIds`)
 - [x] `Favorites/` view — favorited assets, flat (`isFavorite`)
 - [ ] Full two-way sync: pull remote changes via `enumerateChanges` + sync anchors
+
+## Releasing
+
+Distributed builds must be Developer-ID signed **and notarized**, or Gatekeeper blocks them on first launch. Store your notary credentials in the keychain once:
+
+```bash
+xcrun notarytool store-credentials findich-notary \
+  --apple-id you@example.com --team-id QZSF4W9PK3 \
+  --password APP_SPECIFIC_PASSWORD   # appleid.apple.com -> App-Specific Passwords
+```
+
+Then build, notarize, staple, and package a DMG:
+
+```bash
+./scripts/release.sh
+```
+
+The stapled `build/Findich.dmg` is the artifact to distribute.
+
+## License
+
+GPL-3.0 (see [LICENSE](LICENSE)). Findich is an independent client: it only talks to Immich's HTTP API and bundles no Immich code, so it sets its own license.
