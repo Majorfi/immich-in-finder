@@ -164,7 +164,7 @@ const jsonLd = {
       author: {
         "@type": "Organization",
         name: "Quub",
-        url: "https://quub.app",
+        url: "https://quub.tech",
       },
       sameAs: [GITHUB],
     },
@@ -470,12 +470,19 @@ export default function Home() {
             <p>
               Built by{" "}
               <a
-                href="https://quub.app"
+                href="https://quub.tech"
                 className="font-medium text-ink hover:text-accent"
               >
                 Quub
               </a>
-              . Open source, MIT-spirited.
+              . Also try{" "}
+              <a
+                href="https://getwhimbrel.app"
+                className="font-medium text-ink hover:text-accent"
+              >
+                Whimbrel
+              </a>
+              .
             </p>
             <p>
               Not affiliated with{" "}

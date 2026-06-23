@@ -135,6 +135,14 @@ Then build, notarize, staple, and package a DMG:
 
 The stapled `build/Findich.dmg` is the artifact to distribute: upload it to Gumroad, or pass a version to publish it on GitHub Releases too.
 
+## Security usage note
+
+As with any software, there may still be bugs, edge-case errors, or incomplete hardening details. We aim to keep behavior safe, stable, and security-aware, but no software is perfect. We used AI models as a drafting and review aid during implementation.
+
+It was not vibe-coded. Design decisions and a major part of the implementation were still done by a human.
+
+Use this project at your own risk.
+
 ## License
 
 GPL-3.0 (see [LICENSE](LICENSE)). Findich is an independent client: it only talks to Immich's HTTP API and bundles no Immich code, so it sets its own license.
