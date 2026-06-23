@@ -2,7 +2,7 @@ import FinderWindow from "@/components/FinderWindow";
 import SetupWindow from "@/components/SetupWindow";
 
 const GITHUB = "https://github.com/Majorfi/immich-in-finder";
-const GUMROAD = "https://gumroad.com/";
+const GUMROAD = "https://withquub.gumroad.com/l/grbwny";
 
 const VIEWS = [
   {
