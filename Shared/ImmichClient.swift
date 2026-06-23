@@ -64,7 +64,7 @@ struct ImmichClient: Sendable {
 
     // Uploads a file as a new asset. The multipart envelope is assembled on disk
     // (the source is streamed in by chunks) and sent with upload(fromFile:), so
-    // the asset is never held in memory — large videos won't blow the heap or
+    // the asset is never held in memory, so large videos won't blow the heap or
     // starve the cooperative thread pool. Immich dedups by checksum, so an
     // identical file returns status "duplicate" with the existing asset's id.
     func uploadAsset(filename: String, fileURL: URL, createdAt: String, modifiedAt: String) async throws -> UploadResult {
@@ -232,7 +232,7 @@ struct ImmichClient: Sendable {
         try await searchAll(isFavorite: true)
     }
 
-    // Distinct (country, city) places — the cities endpoint returns one
+    // Distinct (country, city) places. The cities endpoint returns one
     // representative asset per city, carrying its exif location.
     func listCities() async throws -> [PlaceSummary] {
         let assets: [Asset] = try await getJSON(path: "/api/search/cities")
@@ -245,7 +245,7 @@ struct ImmichClient: Sendable {
         }
     }
 
-    // Named, non-hidden people only — unnamed face clusters aren't useful folders.
+    // Named, non-hidden people only; unnamed face clusters aren't useful folders.
     func listPeople() async throws -> [PersonSummary] {
         var all: [PersonSummary] = []
         var page = 1

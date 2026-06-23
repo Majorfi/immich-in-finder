@@ -1,4 +1,4 @@
-// A macOS setup window (light) for Findich, rebuilt in pure CSS/SVG — mirrors
+// A macOS setup window (light) for Findich, rebuilt in pure CSS/SVG. It mirrors
 // the real SwiftUI app so the page shows the actual UI and ships zero image bytes.
 
 import type { ReactNode } from "react";

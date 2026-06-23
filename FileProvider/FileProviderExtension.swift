@@ -154,7 +154,7 @@ enum ItemID {
     }
 
     // The inverse of init(_:). Keeping construction here, next to the parser,
-    // is what keeps the two halves of the identifier grammar from drifting —
+    // is what keeps the two halves of the identifier grammar from drifting:
     // every item and signal builds its identifier through this, not by hand.
     var identifier: NSFileProviderItemIdentifier {
         switch self {
@@ -238,7 +238,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
     required convenience init(domain: NSFileProviderDomain) {
         let client = CredentialStore.load().map { ImmichClient(baseURL: $0.baseURL, apiKey: $0.apiKey) }
         self.init(domain: domain, client: client, cache: client.map(ImmichCache.init(client:)))
-        fileProviderLog.log("init — credentials present: \(client != nil, privacy: .public)")
+        fileProviderLog.log("init, credentials present: \(client != nil, privacy: .public)")
     }
 
     // Designated initializer; also the seam tests use to inject a mocked client.
@@ -388,7 +388,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     return
                 }
                 let data = try await client.downloadOriginal(assetID: ref.assetID)
-                fileProviderLog.log("fetchContents \(ref.assetID, privacy: .public) — \(data.count, privacy: .public) bytes")
+                fileProviderLog.log("fetchContents \(ref.assetID, privacy: .public): \(data.count, privacy: .public) bytes")
                 let url = try Self.writeTemporary(data: data, filename: resolved.filename)
                 completionHandler(url, ImmichItem(asset: resolved.asset, location: ref.location, filename: resolved.filename), nil)
             } catch {
@@ -495,7 +495,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 fileProviderLog.log("uploaded \(result.ID, privacy: .public) (duplicate: \(result.isDuplicate, privacy: .public)) → album \(albumID, privacy: .public)")
                 // Return the asset as the server now reports it, so the item's
                 // filename is disambiguated and its content version (checksum)
-                // matches enumeration — avoiding a ghost entry and an immediate
+                // matches enumeration, avoiding a ghost entry and an immediate
                 // redundant re-download of the file we just uploaded.
                 let siblings = try await cache.assets(for: .album(id: albumID))
                 guard let resolved = resolveAsset(result.ID, in: siblings) else {

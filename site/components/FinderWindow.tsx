@@ -1,4 +1,4 @@
-// A macOS Finder window (light appearance) rebuilt in pure CSS/SVG — no
+// A macOS Finder window (light appearance) rebuilt in pure CSS/SVG, with no
 // screenshots, so it stays crisp at every size and ships zero image bytes.
 
 const SIDEBAR = {

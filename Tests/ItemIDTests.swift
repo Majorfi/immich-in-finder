@@ -33,7 +33,7 @@ final class ItemIDTests: XCTestCase {
         XCTAssertEqual(rebuilt, raw)
     }
 
-    // Realistic place identifiers — country and city come from EXIF
+    // Realistic place identifiers: country and city come from EXIF
     // reverse-geocoding (Shared/ImmichClient.swift:233-242), so a city may carry
     // spaces or single colons and an asset id is always a colon-free UUID. All of
     // these must survive identifier → ItemID → identifier unchanged.
@@ -99,7 +99,7 @@ final class AssetLocationTests: XCTestCase {
     }
 
     // assetItemID(_:) must produce an identifier that parses back to the same
-    // location — this is what keeps an item's identity stable across the
+    // location. This is what keeps an item's identity stable across the
     // build (ImmichItem) and parse (ItemID) sides.
     func testAssetItemIDParsesBackToSameLocation() {
         for location in all {
@@ -112,7 +112,7 @@ final class AssetLocationTests: XCTestCase {
     func testParentItemID() {
         XCTAssertEqual(AssetLocation.album(id: "a").parentItemID.identifier.rawValue, "album:a")
         XCTAssertEqual(AssetLocation.place(country: "FR", city: "Paris").parentItemID.identifier.rawValue, "city:FR:Paris")
-        // Favorites assets are direct children of the section — no folder level.
+        // Favorites assets are direct children of the section, no folder level.
         XCTAssertEqual(AssetLocation.favorite.parentItemID.identifier.rawValue, "section:favorites")
     }
 }

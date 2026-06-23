@@ -33,7 +33,7 @@ final class ModelDecodingTests: XCTestCase {
 
     func testUnknownAssetTypeIsNotImage() throws {
         // OTHER maps explicitly; an unexpected enum value would throw, which we
-        // want to know about — so assert the known mapping holds.
+        // want to know about, so assert the known mapping holds.
         let json = Data(#"{"id":"x","type":"OTHER","originalFileName":"f","fileCreatedAt":"2024-01-01T00:00:00.000Z"}"#.utf8)
         XCTAssertEqual(try decoder.decode(Asset.self, from: json).type, .other)
     }

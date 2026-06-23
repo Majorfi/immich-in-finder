@@ -258,7 +258,7 @@ final class AlbumItem: NSObject, NSFileProviderItem {
     }
 }
 
-// A read-only enumerable folder identified by an ItemID — backs every
+// A read-only enumerable folder identified by an ItemID. Backs every
 // smart-view folder (person, tag, country, city). The identifier and parent
 // are passed in as ItemIDs so construction goes through the one grammar.
 final class FolderItem: NSObject, NSFileProviderItem {
@@ -327,7 +327,7 @@ final class MonthItem: NSObject, NSFileProviderItem {
     var filename: String {
         let monthNumber = Int(yearMonth.suffix(2)) ?? 0
         if monthNumber >= 1, monthNumber <= MonthItem.monthNames.count {
-            return String(format: "%02d — %@", monthNumber, MonthItem.monthNames[monthNumber - 1].capitalized)
+            return String(format: "%02d - %@", monthNumber, MonthItem.monthNames[monthNumber - 1].capitalized)
         }
         return String(yearMonth.suffix(2))
     }

@@ -37,17 +37,17 @@ do {
         print("→ Album: pinned \(pinned)")
     } else {
         let albums = try await client.listAlbums()
-        print("✓ Auth OK — \(albums.count) album(s) visible")
+        print("✓ Auth OK, \(albums.count) album(s) visible")
         guard let first = albums.first else {
             print("✗ No albums on this account. Create one in Immich or set IMMICH_ALBUM_ID.")
             exit(1)
         }
         albumID = first.albumID
-        print("→ Album: \"\(first.albumName)\" — \(first.assetCount) asset(s)")
+        print("→ Album: \"\(first.albumName)\", \(first.assetCount) asset(s)")
     }
 
     let album = try await client.album(ID: albumID)
-    print("✓ Enumerated album \"\(album.albumName)\" — \(album.assets.count) asset(s)")
+    print("✓ Enumerated album \"\(album.albumName)\", \(album.assets.count) asset(s)")
     guard let asset = album.assets.first else {
         print("✗ Album has no assets. Add a photo and re-run.")
         exit(1)
@@ -65,7 +65,7 @@ do {
     try thumb.write(to: URL(fileURLWithPath: thumbPath))
     print("✓ Thumbnail: \(humanBytes(thumb.count)) [\(thumbType ?? "?")] -> \(thumbPath)")
 
-    print("\n✅ Probe passed — auth, enumeration, original + thumbnail all work.")
+    print("\n✅ Probe passed: auth, enumeration, original + thumbnail all work.")
 } catch {
     FileHandle.standardError.write(Data("✗ \(error)\n".utf8))
     exit(1)

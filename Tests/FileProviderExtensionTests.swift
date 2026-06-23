@@ -16,7 +16,7 @@ final class TemplateItem: NSObject, NSFileProviderItem {
     }
 }
 
-// Sendable snapshot of a completion result — NSFileProviderItem/Error can't
+// Sendable snapshot of a completion result; NSFileProviderItem/Error can't
 // cross a continuation under Swift 6, so the completions extract what we assert.
 private struct Outcome: Sendable {
     let filename: String?

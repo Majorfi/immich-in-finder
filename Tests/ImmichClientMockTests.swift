@@ -1,6 +1,6 @@
 import XCTest
 
-// Drives ImmichClient against MockURLProtocol — no server, runs in CI. Covers
+// Drives ImmichClient against MockURLProtocol; no server, runs in CI. Covers
 // error handling, decoding, the pagination loop, multipart upload, and the
 // timeline probe helpers, which the live integration tests don't exercise.
 final class ImmichClientMockTests: XCTestCase {
@@ -35,7 +35,7 @@ final class ImmichClientMockTests: XCTestCase {
     // MARK: retry / backoff
 
     // A transient transport blip (timeout) on the first attempt is retried, and
-    // the subsequent success is returned — proving the bounded retry kicks in.
+    // the subsequent success is returned, proving the bounded retry kicks in.
     func testTransientTransportFailureThenSuccessIsRetried() async throws {
         let calls = AtomicInt()
         let client = MockClient.make { _ in
@@ -60,7 +60,7 @@ final class ImmichClientMockTests: XCTestCase {
         XCTAssertEqual(calls.count, 2, "first attempt 503, second 200")
     }
 
-    // A 4xx (auth) is definitive — it must NOT be retried, so exactly one
+    // A 4xx (auth) is definitive: it must NOT be retried, so exactly one
     // attempt fires and the httpStatus error surfaces immediately.
     func testAuthErrorIsNotRetried() async {
         let calls = AtomicInt()
@@ -211,7 +211,7 @@ final class ImmichClientMockTests: XCTestCase {
         XCTAssertEqual(months, ["2024-01", "2024-03"])
     }
 
-    // The bucket fetch failing falls open — every candidate month is kept rather
+    // The bucket fetch failing falls open: every candidate month is kept rather
     // than dropped, so one transient error never hides the whole year.
     func testNonEmptyMonthsFallsOpenOnError() async throws {
         let client = MockClient.make { _ in (500, Data("{}".utf8)) }
@@ -229,7 +229,7 @@ final class ImmichClientMockTests: XCTestCase {
         XCTAssertEqual(years, [2022, 2021, 2020])
     }
 
-    // The bucket fetch failing falls open — every candidate year in the probed
+    // The bucket fetch failing falls open: every candidate year in the probed
     // range is kept, sorted descending.
     func testNonEmptyYearsFallsOpenOnError() async throws {
         let client = MockClient.make { _ in (500, Data("{}".utf8)) }

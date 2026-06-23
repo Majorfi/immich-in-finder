@@ -46,7 +46,7 @@ final class SectionKindTests: XCTestCase {
     }
 
     // Each section must map to a distinct identifier, and every identifier must
-    // parse back to its section — guards against two views colliding.
+    // parse back to its section, which guards against two views colliding.
     func testSectionIdentifiersAreDistinctAndRoundTrip() {
         let ids = SectionKind.allCases.map { $0.itemID.identifier.rawValue }
         XCTAssertEqual(Set(ids).count, SectionKind.allCases.count)

@@ -2,7 +2,7 @@ import XCTest
 
 // Live, read-only integration tests for the API client. They hit a real Immich
 // server, so they are gated on environment variables and skip cleanly when the
-// server isn't configured — the key is never baked into the repo. Run with:
+// server isn't configured; the key is never baked into the repo. Run with:
 //
 //   set -a; source .env.local; set +a
 //   xcodebuild test -scheme ImmichDriveTests -destination 'platform=macOS' \

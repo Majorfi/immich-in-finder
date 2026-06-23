@@ -20,7 +20,7 @@ final class VisibleSectionsTests: XCTestCase {
         XCTAssertFalse(AppGroup.identifier.isEmpty)
         XCTAssertFalse(AppGroup.domainIdentifier.isEmpty)
         // If this is nil the VisibleSections round-trip above silently no-ops,
-        // so assert it — also an early warning if the suite becomes unavailable.
+        // so assert it; also an early warning if the suite becomes unavailable.
         XCTAssertNotNil(AppGroup.defaults)
     }
 }

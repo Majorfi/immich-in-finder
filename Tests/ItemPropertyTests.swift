@@ -2,7 +2,7 @@ import XCTest
 import FileProvider
 import UniformTypeIdentifiers
 
-// Every NSFileProviderItem the extension hands the system — exercising the
+// Every NSFileProviderItem the extension hands the system, exercising the
 // property getters (filename, contentType, capabilities, version, sizes, dates).
 final class ItemPropertyTests: XCTestCase {
     private func asset(id: String = "a", type: AssetType = .image, name: String = "f.jpg",
@@ -86,7 +86,7 @@ final class ItemPropertyTests: XCTestCase {
         let month = MonthItem(yearMonth: "2024-03")
         XCTAssertEqual(month.itemIdentifier.rawValue, "month:2024-03")
         XCTAssertEqual(month.parentItemIdentifier.rawValue, "year:2024")
-        XCTAssertTrue(month.filename.hasPrefix("03 — "), "got \(month.filename)")
+        XCTAssertTrue(month.filename.hasPrefix("03 - "), "got \(month.filename)")
     }
 
     func testRootItem() {

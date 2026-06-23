@@ -53,7 +53,7 @@ body {
     0 8px 24px rgba(0, 0, 0, 0.07);
 }
 
-/* Flat cards with a hairline border — no shadow, like Whimbrel. */
+/* Flat cards with a hairline border, no shadow, like Whimbrel. */
 .card {
   background: var(--color-paper);
   border: 1px solid var(--color-line);
