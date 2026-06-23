@@ -237,7 +237,7 @@ struct ContentView: View {
         do {
             albumCount = try await ImmichClient(baseURL: url, apiKey: apiKey).listAlbums().count
         } catch {
-            status = .failure("Couldn’t connect — check the address and API key.")
+            status = .failure("Couldn’t connect. Check the address and API key.")
             return
         }
 
@@ -253,7 +253,7 @@ struct ContentView: View {
             }
             DomainManager.reloadRoot()
             isEnabled = true
-            status = .success("Enabled — find “Findich” in your Finder sidebar (\(albumCount) albums).")
+            status = .success("Enabled. Find “Findich” in your Finder sidebar (\(albumCount) albums).")
         } catch {
             status = .failure("Connected, but couldn’t enable the Finder location.")
         }
