@@ -33,6 +33,35 @@ final class ItemIDTests: XCTestCase {
         XCTAssertEqual(rebuilt, raw)
     }
 
+    // Realistic place identifiers — country and city come from EXIF
+    // reverse-geocoding (Shared/ImmichClient.swift:233-242), so a city may carry
+    // spaces or single colons and an asset id is always a colon-free UUID. All of
+    // these must survive identifier → ItemID → identifier unchanged.
+    func testPlaceAssetRealisticInputsRoundTrip() {
+        let shapes = [
+            "qasset:France:Paris:ast",
+            "qasset:United States:New York:ast",
+            "qasset:X:weird:city:name:ast",
+            "qasset:France:550e8400-e29b-41d4-a716-446655440000:ast",
+        ]
+        for raw in shapes {
+            let rebuilt = ItemID(NSFileProviderItemIdentifier(rawValue: raw)).identifier.rawValue
+            XCTAssertEqual(rebuilt, raw, "place-asset round-trip failed for \(raw)")
+        }
+    }
+
+    // Empty country or city components can never originate from Immich: listCities
+    // (Shared/ImmichClient.swift:236-237) drops any place whose country or city is
+    // empty before a qasset id is ever built. Such ids are deliberately rejected
+    // to .other rather than guessed, since split(separator:) drops the empty part.
+    func testPlaceAssetWithEmptyComponentParsesToOther() {
+        for raw in ["qasset::Paris:ast", "qasset:France::ast"] {
+            guard case .other = ItemID(NSFileProviderItemIdentifier(rawValue: raw)) else {
+                return XCTFail("empty-component place id should parse to .other: \(raw)")
+            }
+        }
+    }
+
     func testUnknownIdentifierIsOther() {
         guard case .other = ItemID(NSFileProviderItemIdentifier(rawValue: "nonsense")) else {
             return XCTFail("unknown identifier should parse to .other")

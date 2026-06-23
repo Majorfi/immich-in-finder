@@ -71,6 +71,14 @@ struct SearchAssets: Decodable, Sendable {
     let nextPage: String?
 }
 
+// One non-empty month from GET /api/timeline/buckets. The server returns one
+// entry per month that holds assets, across the whole library, in a single call —
+// so non-empty years/months derive from this list instead of per-period probing.
+struct TimeBucket: Decodable, Sendable {
+    let timeBucket: String // "YYYY-MM-DD" (start of the month)
+    let count: Int
+}
+
 struct PersonSummary: Decodable, Sendable {
     let id: String
     let name: String?

@@ -77,6 +77,8 @@ extension MockClient {
                 return data(#"[{"id":"a","albumName":"Trip","assetCount":1}]"#)
             case ("/api/search/metadata", _):
                 return data("{\"assets\":{\"items\":[\(asset)],\"nextPage\":null}}")
+            case ("/api/timeline/buckets", _):
+                return data(#"[{"timeBucket":"2024-03-01","count":1}]"#)
             case ("/api/people", _):
                 return data(#"{"people":[{"id":"p","name":"Alice","isHidden":false}],"hasNextPage":false}"#)
             case ("/api/search/cities", _):

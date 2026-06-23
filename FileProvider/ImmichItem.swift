@@ -139,10 +139,18 @@ final class ImmichItem: NSObject, NSFileProviderItem {
         // month is derived from the capture date, not a real membership).
         switch location {
         case .album:
-            return [.allowsReading, .allowsEvicting, .allowsDeleting, .allowsReparenting]
+            return [.allowsReading, .allowsDeleting, .allowsReparenting]
         case .month, .person, .place, .tag, .favorite:
-            return [.allowsReading, .allowsEvicting, .allowsDeleting]
+            return [.allowsReading, .allowsDeleting]
         }
+    }
+
+    // Modern replacement for the deprecated `.allowsEvicting` capability
+    // (deprecated macOS 13): originals are placeholders fetched on demand via
+    // fetchContents and may be evicted to reclaim space, evicting the local
+    // copy when the remote version changes.
+    var contentPolicy: NSFileProviderContentPolicy {
+        .downloadLazilyAndEvictOnRemoteUpdate
     }
 
     var documentSize: NSNumber? {

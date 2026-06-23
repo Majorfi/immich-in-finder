@@ -86,7 +86,13 @@ struct ImmichClient: Sendable {
             ]
         )
 
-        let (responseData, response) = try await session.upload(for: request, fromFile: envelope)
+        // The on-disk envelope persists until the `defer` above fires after this
+        // method returns, so a retried upload(fromFile:) re-reads a file that
+        // still exists.
+        let sealed = request
+        let (responseData, response) = try await sendRetrying("/api/assets") {
+            try await session.upload(for: sealed, fromFile: envelope)
+        }
         try Self.ensureOK(response, path: "/api/assets")
         let decoded = try JSONDecoder().decode(UploadResponse.self, from: responseData)
         return UploadResult(ID: decoded.id, isDuplicate: decoded.status == .duplicate)
@@ -254,53 +260,39 @@ struct ImmichClient: Sendable {
         return all.filter { $0.name?.isEmpty == false }
     }
 
-    func hasAssets(after: String, before: String) async throws -> Bool {
-        let page = try await searchMetadata(takenAfter: after, takenBefore: before, page: 1, size: 1, order: .asc)
-        return page.assets.isEmpty == false
+    // One GET returns every non-empty month across the whole library (the server
+    // default bucketing), so non-empty years/months derive from this single call
+    // instead of probing the server once per candidate period. For an N-year
+    // library the old per-period fan-out cost 13·N+2 search POSTs (N+2 for the
+    // year list, 12 per month drill-down) with unbounded concurrency; this is one
+    // request, regardless of library span.
+    func timelineBuckets() async throws -> [TimeBucket] {
+        try await getJSON(path: "/api/timeline/buckets")
     }
 
-    func monthHasAssets(_ yearMonth: String) async throws -> Bool {
-        let bounds = ImmichClient.monthBounds(yearMonth)
-        return try await hasAssets(after: bounds.after, before: bounds.before)
-    }
-
-    func yearHasAssets(_ year: Int) async throws -> Bool {
-        let after = String(format: "%04d-01-01T00:00:00.000Z", year)
-        let before = String(format: "%04d-01-01T00:00:00.000Z", year + 1)
-        return try await hasAssets(after: after, before: before)
-    }
-
-    // A failing probe falls open (the candidate is kept) so one transient error
-    // never collapses the whole listing.
+    // Fall-open semantics: if the bucket fetch fails, keep every candidate month
+    // (1...12) rather than collapsing the listing, so one transient error never
+    // hides the whole year. Output stays "YYYY-MM" and sorted, as callers/tests
+    // (MonthItem, monthBounds) expect.
     func nonEmptyMonths(year: String) async -> [String] {
-        let candidates = (1...12).map { String(format: "%@-%02d", year, $0) }
-        let kept = await ImmichClient.concurrentFilter(candidates) { yearMonth in
-            (try? await self.monthHasAssets(yearMonth)) ?? true
+        guard let buckets = try? await timelineBuckets() else {
+            return (1...12).map { String(format: "%@-%02d", year, $0) }
         }
-        return kept.sorted()
+        return buckets
+            .map { String($0.timeBucket.prefix(7)) } // "YYYY-MM"
+            .filter { $0.hasPrefix("\(year)-") }
+            .sorted()
     }
 
+    // Fall-open semantics: if the bucket fetch fails, keep every candidate year
+    // in the probed range. Years are the distinct 4-char prefixes of the bucket
+    // list, sorted descending to match the previous ordering.
     func nonEmptyYears(oldest: Int, newest: Int) async -> [Int] {
-        let candidates = Array(oldest...newest)
-        let kept = await ImmichClient.concurrentFilter(candidates) { year in
-            (try? await self.yearHasAssets(year)) ?? true
+        guard let buckets = try? await timelineBuckets() else {
+            return Array(oldest...newest).sorted(by: >)
         }
-        return kept.sorted(by: >)
-    }
-
-    static func concurrentFilter<T: Sendable>(_ candidates: [T], keep: @Sendable @escaping (T) async -> Bool) async -> [T] {
-        await withTaskGroup(of: (T, Bool).self) { group in
-            for candidate in candidates {
-                group.addTask { (candidate, await keep(candidate)) }
-            }
-            var kept: [T] = []
-            for await (candidate, keepIt) in group {
-                if keepIt {
-                    kept.append(candidate)
-                }
-            }
-            return kept
-        }
+        let years = Set(buckets.compactMap { Int($0.timeBucket.prefix(4)) })
+        return years.sorted(by: >)
     }
 
     static func monthBounds(_ yearMonth: String) -> (after: String, before: String) {
@@ -336,10 +328,72 @@ struct ImmichClient: Sendable {
         return request
     }
 
+    // MARK: - Retry / backoff
+
+    private static let maxAttempts = 3
+    private static let baseBackoffNanos: UInt64 = 200_000_000 // 200ms
+
+    // A transient URLError is a transport blip worth retrying; a definitive
+    // failure (auth, not-connected, cancelled) is not. Kept deliberately narrow
+    // so genuine offline/4xx surface immediately.
+    private static func isTransient(urlError error: Error) -> Bool {
+        switch (error as? URLError)?.code {
+        case .timedOut, .networkConnectionLost, .cannotConnectToHost, .dnsLookupFailed, .cannotFindHost:
+            return true
+        default:
+            return false
+        }
+    }
+
+    // HTTP 429 (rate limited) and 5xx (server-side) are transient; 4xx are not.
+    private static func isTransient(status code: Int) -> Bool {
+        code == 429 || (500...599).contains(code)
+    }
+
+    // Wraps a single transport send with a bounded exponential backoff. Retries
+    // only TRANSIENT failures (transient URLError, or a 429/5xx response);
+    // anything else (including non-2xx 4xx) is returned/rethrown as-is so the
+    // caller's `ensureOK` produces identical error semantics for the terminal
+    // case. The write mutations routed through here (upload/addAssets/trash...)
+    // are safe to retry: Immich dedups uploads by checksum and album/trash
+    // mutations are set-based and idempotent.
+    private func sendRetrying(
+        _ path: String,
+        _ send: @Sendable () async throws -> (Data, URLResponse)
+    ) async throws -> (Data, URLResponse) {
+        var attempt = 1
+        while true {
+            let hasAttemptsLeft = attempt < Self.maxAttempts
+            do {
+                let (data, response) = try await send()
+                if hasAttemptsLeft,
+                   let http = response as? HTTPURLResponse,
+                   Self.isTransient(status: http.statusCode) {
+                    try? await Task.sleep(nanoseconds: Self.backoffNanos(attempt))
+                    attempt += 1
+                    continue
+                }
+                return (data, response)
+            } catch {
+                if hasAttemptsLeft, Self.isTransient(urlError: error) {
+                    try? await Task.sleep(nanoseconds: Self.backoffNanos(attempt))
+                    attempt += 1
+                    continue
+                }
+                throw error
+            }
+        }
+    }
+
+    private static func backoffNanos(_ attempt: Int) -> UInt64 {
+        baseBackoffNanos << (attempt - 1) // base * 2^(attempt-1)
+    }
+
     private func getJSON<T: Decodable>(path: String) async throws -> T {
         var request = try makeRequest(path: path)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        let (data, response) = try await session.data(for: request)
+        let sealed = request
+        let (data, response) = try await sendRetrying(path) { try await session.data(for: sealed) }
         try Self.ensureOK(response, path: path)
         return try JSONDecoder().decode(T.self, from: data)
     }
@@ -358,7 +412,8 @@ struct ImmichClient: Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.httpBody = try JSONEncoder().encode(body)
-        let (data, response) = try await session.data(for: request)
+        let sealed = request
+        let (data, response) = try await sendRetrying(path) { try await session.data(for: sealed) }
         try Self.ensureOK(response, path: path)
         return data
     }
@@ -368,14 +423,15 @@ struct ImmichClient: Sendable {
     private func send(method: HTTPMethod, path: String) async throws -> Data {
         var request = try makeRequest(path: path)
         request.httpMethod = method.rawValue
-        let (data, response) = try await session.data(for: request)
+        let sealed = request
+        let (data, response) = try await sendRetrying(path) { try await session.data(for: sealed) }
         try Self.ensureOK(response, path: path)
         return data
     }
 
     private func getBytes(path: String) async throws -> Data {
         let request = try makeRequest(path: path)
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await sendRetrying(path) { try await session.data(for: request) }
         try Self.ensureOK(response, path: path)
         return data
     }

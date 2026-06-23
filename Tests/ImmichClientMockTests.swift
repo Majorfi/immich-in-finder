@@ -32,6 +32,64 @@ final class ImmichClientMockTests: XCTestCase {
         await XCTAssertThrowsErrorAsync(try await client.listAlbums())
     }
 
+    // MARK: retry / backoff
+
+    // A transient transport blip (timeout) on the first attempt is retried, and
+    // the subsequent success is returned — proving the bounded retry kicks in.
+    func testTransientTransportFailureThenSuccessIsRetried() async throws {
+        let calls = AtomicInt()
+        let client = MockClient.make { _ in
+            if calls.next() == 1 { throw URLError(.timedOut) }
+            return (200, Data(#"[{"id":"a","albumName":"X","assetCount":3}]"#.utf8))
+        }
+        let albums = try await client.listAlbums()
+        XCTAssertEqual(albums.map(\.albumID), ["a"])
+        XCTAssertEqual(calls.count, 2, "first attempt failed transiently, second succeeded")
+    }
+
+    // A transient HTTP status (503) on the first attempt is retried, and the
+    // subsequent 200 is returned.
+    func testTransientHTTPStatusThenSuccessIsRetried() async throws {
+        let calls = AtomicInt()
+        let client = MockClient.make { _ in
+            if calls.next() == 1 { return (503, Data("{}".utf8)) }
+            return (200, Data(#"[{"id":"a","albumName":"X","assetCount":3}]"#.utf8))
+        }
+        let albums = try await client.listAlbums()
+        XCTAssertEqual(albums.map(\.albumID), ["a"])
+        XCTAssertEqual(calls.count, 2, "first attempt 503, second 200")
+    }
+
+    // A 4xx (auth) is definitive — it must NOT be retried, so exactly one
+    // attempt fires and the httpStatus error surfaces immediately.
+    func testAuthErrorIsNotRetried() async {
+        let calls = AtomicInt()
+        let client = MockClient.make { _ in
+            _ = calls.next()
+            return (401, Data("{}".utf8))
+        }
+        await XCTAssertThrowsErrorAsync(try await client.listAlbums()) { error in
+            guard case ImmichError.httpStatus(_, let code) = error else { return XCTFail("got \(error)") }
+            XCTAssertEqual(code, 401)
+        }
+        XCTAssertEqual(calls.count, 1, "4xx is single-attempt, no retry")
+    }
+
+    // Retries are bounded: a persistently transient status exhausts at exactly
+    // maxAttempts and then surfaces the httpStatus error.
+    func testTransientRetryExhausts() async {
+        let calls = AtomicInt()
+        let client = MockClient.make { _ in
+            _ = calls.next()
+            return (503, Data("{}".utf8))
+        }
+        await XCTAssertThrowsErrorAsync(try await client.listAlbums()) { error in
+            guard case ImmichError.httpStatus(_, let code) = error else { return XCTFail("got \(error)") }
+            XCTAssertEqual(code, 503)
+        }
+        XCTAssertEqual(calls.count, 3, "bounded at maxAttempts")
+    }
+
     // MARK: decoding success
 
     func testListAlbumsDecodes() async throws {
@@ -144,22 +202,37 @@ final class ImmichClientMockTests: XCTestCase {
         XCTAssertNil(range)
     }
 
-    func testNonEmptyMonthsKeepsAllWhenPresent() async throws {
-        let client = MockClient.make(json: #"{"assets":{"items":[\#(asset)],"nextPage":null}}"#)
+    // One bucketed query yields the non-empty months for the year (other years'
+    // buckets are filtered out), preserving the "YYYY-MM" output format.
+    func testNonEmptyMonthsDerivesFromBuckets() async throws {
+        let json = #"[{"timeBucket":"2024-01-01","count":5},{"timeBucket":"2024-03-01","count":2},{"timeBucket":"2023-06-01","count":9}]"#
+        let client = MockClient.make(json: json)
+        let months = await client.nonEmptyMonths(year: "2024")
+        XCTAssertEqual(months, ["2024-01", "2024-03"])
+    }
+
+    // The bucket fetch failing falls open — every candidate month is kept rather
+    // than dropped, so one transient error never hides the whole year.
+    func testNonEmptyMonthsFallsOpenOnError() async throws {
+        let client = MockClient.make { _ in (500, Data("{}".utf8)) }
         let months = await client.nonEmptyMonths(year: "2024")
         XCTAssertEqual(months.count, 12)
         XCTAssertEqual(months.first, "2024-01")
     }
 
-    // A failing probe falls open — the candidate is kept rather than dropped.
-    func testNonEmptyMonthsFallsOpenOnError() async throws {
-        let client = MockClient.make { _ in (500, Data("{}".utf8)) }
-        let months = await client.nonEmptyMonths(year: "2024")
-        XCTAssertEqual(months.count, 12)
+    // Non-empty years are the distinct year prefixes of the bucket list, sorted
+    // descending.
+    func testNonEmptyYearsDerivesFromBuckets() async throws {
+        let json = #"[{"timeBucket":"2022-01-01","count":1},{"timeBucket":"2021-05-01","count":1},{"timeBucket":"2020-12-01","count":1},{"timeBucket":"2022-07-01","count":1}]"#
+        let client = MockClient.make(json: json)
+        let years = await client.nonEmptyYears(oldest: 2020, newest: 2022)
+        XCTAssertEqual(years, [2022, 2021, 2020])
     }
 
-    func testNonEmptyYears() async throws {
-        let client = MockClient.make(json: #"{"assets":{"items":[\#(asset)],"nextPage":null}}"#)
+    // The bucket fetch failing falls open — every candidate year in the probed
+    // range is kept, sorted descending.
+    func testNonEmptyYearsFallsOpenOnError() async throws {
+        let client = MockClient.make { _ in (500, Data("{}".utf8)) }
         let years = await client.nonEmptyYears(oldest: 2020, newest: 2022)
         XCTAssertEqual(years, [2022, 2021, 2020])
     }
