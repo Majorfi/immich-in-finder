@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://findich.app"),
-  title: "Findich — an Immich drive for your macOS Finder",
+  title: "Findich: an Immich drive for your macOS Finder",
   description:
     "Browse your self-hosted Immich library in the macOS Finder. Albums, timeline, people and places become real folders, with on-demand download. Open source, pay what you want.",
   alternates: { canonical: "/" },
@@ -30,14 +30,14 @@ export const metadata: Metadata = {
     "Immich Finder integration",
   ],
   openGraph: {
-    title: "Findich — an Immich drive",
+    title: "Findich: an Immich drive",
     description:
       "Your self-hosted Immich library as a native folder in the macOS Finder. Like iCloud Drive, but for your own server.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Findich — an Immich drive",
+    title: "Findich: an Immich drive",
     description:
       "Your self-hosted Immich library as a native folder in the macOS Finder.",
   },
