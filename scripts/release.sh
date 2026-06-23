@@ -29,3 +29,14 @@ xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
 xcrun stapler staple "$DMG"
 
 echo "Done: $DMG (signed, notarized, stapled)."
+
+# Pass a version (e.g. ./scripts/release.sh 1.0.0) to also publish the DMG as a
+# GitHub Release. Omit it to just build the DMG locally (e.g. for Gumroad only).
+if [ -n "${1:-}" ]; then
+    VERSION="$1"
+    gh release create "v$VERSION" "$DMG" \
+        --repo Majorfi/immich-in-finder \
+        --title "Findich $VERSION" \
+        --notes "macOS 13 or later. Browse your self-hosted Immich library in the Finder. See findich.app."
+    echo "Published v$VERSION to GitHub Releases."
+fi

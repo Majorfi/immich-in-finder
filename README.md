@@ -129,10 +129,11 @@ xcrun notarytool store-credentials findich-notary \
 Then build, notarize, staple, and package a DMG:
 
 ```bash
-./scripts/release.sh
+./scripts/release.sh            # build build/Findich.dmg
+./scripts/release.sh 1.0.0      # ...and also publish it as a GitHub Release
 ```
 
-The stapled `build/Findich.dmg` is the artifact to distribute.
+The stapled `build/Findich.dmg` is the artifact to distribute: upload it to Gumroad, or pass a version to publish it on GitHub Releases too.
 
 ## License
 
