@@ -15,10 +15,11 @@ xcodegen generate
 
 xcodebuild -project ImmichDrive.xcodeproj -scheme "$SCHEME" \
   -configuration Release -destination 'generic/platform=macOS' \
-  -archivePath "$ARCHIVE" archive
+  -allowProvisioningUpdates -archivePath "$ARCHIVE" archive
 
 xcodebuild -exportArchive -archivePath "$ARCHIVE" \
-  -exportOptionsPlist scripts/ExportOptions.plist -exportPath "$EXPORT_DIR"
+  -exportOptionsPlist scripts/ExportOptions.plist -exportPath "$EXPORT_DIR" \
+  -allowProvisioningUpdates
 
 rm -f "$DMG"
 hdiutil create -volname "$APP_NAME" -srcfolder "$EXPORT_DIR/$APP_NAME.app" \
