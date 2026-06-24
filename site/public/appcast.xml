@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Findich</title>
+    <link>https://findich.app/appcast.xml</link>
+    <description>Updates for Findich, an Immich drive for the macOS Finder.</description>
+    <language>en</language>
+  </channel>
+</rss>
