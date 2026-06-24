@@ -1,0 +1,11 @@
+.build/
+.env.local
+.DS_Store
+*.xcuserstate
+xcuserdata/
+
+# XcodeGen generates these from project.yml — run `xcodegen generate`
+*.xcodeproj
+*.generated.plist
+DerivedData/
+build/
