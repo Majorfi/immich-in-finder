@@ -1,5 +1,8 @@
 # Findich
 
+<img width="1543" height="869" alt="findich-cover 1" src="https://github.com/user-attachments/assets/16debed7-1b12-4140-bd71-ba06726b4ddc" />
+
+
 > **Findich** is an Immich drive. Browse your self-hosted [Immich](https://immich.app) photo library as a native folder in the macOS Finder, like iCloud Drive or Dropbox, but for Immich.
 
 Immich organizes photos by timeline, albums, people, and places, not by folders. This project bridges that gap with an Apple **File Provider** extension that presents your Immich library as a Finder location, with **on-demand download**: files appear as placeholders and only download when you open them.
