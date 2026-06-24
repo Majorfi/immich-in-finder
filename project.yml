@@ -19,7 +19,9 @@ targets:
     platform: macOS
     sources:
       - path: App
+        excludes: ["*.md", "**/*.md"]
       - path: Shared
+        excludes: ["*.md", "**/*.md"]
     settings:
       base:
         # The .app is named Findich.app — Finder uses the container app's bundle
@@ -46,7 +48,9 @@ targets:
     platform: macOS
     sources:
       - path: FileProvider
+        excludes: ["*.md", "**/*.md"]
       - path: Shared
+        excludes: ["*.md", "**/*.md"]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.quub.immichdrive.FileProvider
@@ -70,8 +74,11 @@ targets:
     platform: macOS
     sources:
       - path: Tests
+        excludes: ["*.md", "**/*.md"]
       - path: Shared
+        excludes: ["*.md", "**/*.md"]
       - path: FileProvider
+        excludes: ["*.md", "**/*.md"]
     settings:
       base:
         SWIFT_VERSION: "6.0"
