@@ -49,7 +49,7 @@ final class ModelDecodingTests: XCTestCase {
     func testPersonSummary() throws {
         let json = Data(#"{"id":"p","name":"Alice","isHidden":false}"#.utf8)
         let p = try decoder.decode(PersonSummary.self, from: json)
-        XCTAssertEqual(p.id, "p")
+        XCTAssertEqual(p.personID, "p")
         XCTAssertEqual(p.name, "Alice")
         XCTAssertEqual(p.isHidden, false)
     }
@@ -57,7 +57,7 @@ final class ModelDecodingTests: XCTestCase {
     func testTagSummary() throws {
         let json = Data(#"{"id":"t","name":"2020","value":"2020","parentId":null}"#.utf8)
         let t = try decoder.decode(TagSummary.self, from: json)
-        XCTAssertEqual(t.id, "t")
+        XCTAssertEqual(t.tagID, "t")
         XCTAssertEqual(t.name, "2020")
     }
 

@@ -20,8 +20,13 @@ struct PlaceSummary: Sendable, Hashable {
 }
 
 struct TagSummary: Decodable, Sendable {
-    let id: String
+    let tagID: String
     let name: String
+
+    enum CodingKeys: String, CodingKey {
+        case tagID = "id"
+        case name
+    }
 }
 
 struct Asset: Decodable, Sendable {
@@ -80,9 +85,15 @@ struct TimeBucket: Decodable, Sendable {
 }
 
 struct PersonSummary: Decodable, Sendable {
-    let id: String
+    let personID: String
     let name: String?
     let isHidden: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case personID = "id"
+        case name
+        case isHidden
+    }
 }
 
 struct PeopleResponse: Decodable, Sendable {
@@ -124,8 +135,13 @@ enum UploadStatus: String, Decodable, Sendable {
 // POST /api/assets returns the new id plus whether the server recognised the
 // upload as a checksum duplicate of an asset it already holds.
 struct UploadResponse: Decodable, Sendable {
-    let id: String
+    let assetID: String
     let status: UploadStatus
+
+    enum CodingKeys: String, CodingKey {
+        case assetID = "id"
+        case status
+    }
 }
 
 struct AssetIDsRequest: Encodable, Sendable {

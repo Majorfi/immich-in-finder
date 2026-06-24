@@ -79,7 +79,7 @@ final class ImmichCacheTests: XCTestCase {
         let p1 = try await people.peopleList()
         _ = try await people.peopleList()
         XCTAssertEqual(pCalls.count, 1)
-        XCTAssertEqual(p1.map(\.id), ["p"])
+        XCTAssertEqual(p1.map(\.personID), ["p"])
 
         let cCalls = AtomicInt()
         let cities = ImmichCache(client: countingClient(cCalls, json: "[]"))
@@ -92,6 +92,6 @@ final class ImmichCacheTests: XCTestCase {
         let t1 = try await tags.tagList()
         _ = try await tags.tagList()
         XCTAssertEqual(tCalls.count, 1)
-        XCTAssertEqual(t1.map(\.id), ["t"])
+        XCTAssertEqual(t1.map(\.tagID), ["t"])
     }
 }

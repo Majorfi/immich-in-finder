@@ -30,10 +30,9 @@ final class ImmichClientIntegrationTests: IntegrationTestCase {
         }
     }
 
-    func testTimelineYearRange() async throws {
-        let range = try await client.assetYearRange()
-        let r = try XCTUnwrap(range, "a non-empty library should have a year range")
-        XCTAssertLessThanOrEqual(r.oldest, r.newest)
+    func testTimelineYears() async {
+        let years = await client.nonEmptyYears()
+        XCTAssertFalse(years.isEmpty, "a non-empty library should have at least one year")
     }
 
     func testListTags() async throws {
@@ -67,7 +66,7 @@ final class ImmichClientIntegrationTests: IntegrationTestCase {
     func testSearchAllTagReturnsAssets() async throws {
         let tags = try await client.listTags()
         for tag in tags.prefix(25) {
-            let assets = try await client.searchAllTag(tagID: tag.id)
+            let assets = try await client.searchAllTag(tagID: tag.tagID)
             if assets.isEmpty == false {
                 XCTAssertFalse(try XCTUnwrap(assets.first).assetID.isEmpty)
                 return

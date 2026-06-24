@@ -47,7 +47,8 @@ final class DomainRegistrationTests: XCTestCase {
             try await DomainRegistration.register(
                 add: {
                     c.addCalls += 1
-                    throw c.addCalls == 1 ? TestError.first : TestError.second
+                    let next: TestError = if c.addCalls == 1 { .first } else { .second }
+                    throw next
                 },
                 removeAll: { c.removeAllCalls += 1 }
             )

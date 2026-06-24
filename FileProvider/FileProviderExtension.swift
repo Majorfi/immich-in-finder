@@ -310,7 +310,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
             Task {
                 do {
                     let people = try await cache.peopleList()
-                    guard let person = people.first(where: { $0.id == personID }) else {
+                    guard let person = people.first(where: { $0.personID == personID }) else {
                         completionHandler(nil, Self.error(.noSuchItem))
                         progress.completedUnitCount = 1
                         return
@@ -330,7 +330,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
             Task {
                 do {
                     let tags = try await cache.tagList()
-                    guard let tag = tags.first(where: { $0.id == tagID }) else {
+                    guard let tag = tags.first(where: { $0.tagID == tagID }) else {
                         completionHandler(nil, Self.error(.noSuchItem))
                         progress.completedUnitCount = 1
                         return
@@ -670,14 +670,14 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
 
     private static func personItem(for person: PersonSummary, in people: [PersonSummary]) -> FolderItem {
         let counts = nameCounts(people.map { $0.name ?? "" })
-        let filename = disambiguatedName(base: person.name ?? "", id: person.id, counts: counts)
-        return FolderItem(id: .person(person.id), parent: .peopleSection, filename: filename)
+        let filename = disambiguatedName(base: person.name ?? "", id: person.personID, counts: counts)
+        return FolderItem(id: .person(person.personID), parent: .peopleSection, filename: filename)
     }
 
     private static func tagItem(for tag: TagSummary, in tags: [TagSummary]) -> FolderItem {
         let counts = nameCounts(tags.map { $0.name })
-        let filename = disambiguatedName(base: tag.name, id: tag.id, counts: counts)
-        return FolderItem(id: .tag(tag.id), parent: .tagsSection, filename: filename)
+        let filename = disambiguatedName(base: tag.name, id: tag.tagID, counts: counts)
+        return FolderItem(id: .tag(tag.tagID), parent: .tagsSection, filename: filename)
     }
 }
 

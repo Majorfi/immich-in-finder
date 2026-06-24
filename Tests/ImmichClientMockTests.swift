@@ -101,7 +101,7 @@ final class ImmichClientMockTests: XCTestCase {
     func testListTagsDecodes() async throws {
         let client = MockClient.make(json: #"[{"id":"t","name":"Trip","value":"Trip"}]"#)
         let tags = try await client.listTags()
-        XCTAssertEqual(tags.map { "\($0.id):\($0.name)" }, ["t:Trip"])
+        XCTAssertEqual(tags.map { "\($0.tagID):\($0.name)" }, ["t:Trip"])
     }
 
     func testListCitiesDerivesPlaces() async throws {
@@ -116,7 +116,7 @@ final class ImmichClientMockTests: XCTestCase {
         let json = #"{"people":[{"id":"1","name":"Alice","isHidden":false},{"id":"2","name":"","isHidden":false}],"hasNextPage":false}"#
         let client = MockClient.make(json: json)
         let people = try await client.listPeople()
-        XCTAssertEqual(people.map(\.id), ["1"])
+        XCTAssertEqual(people.map(\.personID), ["1"])
     }
 
     // MARK: pagination
@@ -187,20 +187,7 @@ final class ImmichClientMockTests: XCTestCase {
         XCTAssertEqual(thumbnail.count, 3)
     }
 
-    // MARK: timeline probe helpers
-
-    func testAssetYearRange() async throws {
-        let client = MockClient.make(json: #"{"assets":{"items":[\#(asset)],"nextPage":null}}"#)
-        let range = try await client.assetYearRange()
-        XCTAssertEqual(range?.oldest, 2024)
-        XCTAssertEqual(range?.newest, 2024)
-    }
-
-    func testAssetYearRangeNilWhenEmpty() async throws {
-        let client = MockClient.make(json: #"{"assets":{"items":[],"nextPage":null}}"#)
-        let range = try await client.assetYearRange()
-        XCTAssertNil(range)
-    }
+    // MARK: timeline helpers
 
     // One bucketed query yields the non-empty months for the year (other years'
     // buckets are filtered out), preserving the "YYYY-MM" output format.
@@ -225,16 +212,16 @@ final class ImmichClientMockTests: XCTestCase {
     func testNonEmptyYearsDerivesFromBuckets() async throws {
         let json = #"[{"timeBucket":"2022-01-01","count":1},{"timeBucket":"2021-05-01","count":1},{"timeBucket":"2020-12-01","count":1},{"timeBucket":"2022-07-01","count":1}]"#
         let client = MockClient.make(json: json)
-        let years = await client.nonEmptyYears(oldest: 2020, newest: 2022)
+        let years = await client.nonEmptyYears()
         XCTAssertEqual(years, [2022, 2021, 2020])
     }
 
-    // The bucket fetch failing falls open: every candidate year in the probed
-    // range is kept, sorted descending.
-    func testNonEmptyYearsFallsOpenOnError() async throws {
+    // Years come only from the bucket list, so a failed bucket fetch yields an
+    // empty list (there is no date range to fall back on, unlike nonEmptyMonths).
+    func testNonEmptyYearsEmptyOnError() async throws {
         let client = MockClient.make { _ in (500, Data("{}".utf8)) }
-        let years = await client.nonEmptyYears(oldest: 2020, newest: 2022)
-        XCTAssertEqual(years, [2022, 2021, 2020])
+        let years = await client.nonEmptyYears()
+        XCTAssertEqual(years, [])
     }
 }
 

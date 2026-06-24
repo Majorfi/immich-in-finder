@@ -104,14 +104,16 @@ struct ContentView: View {
                         .foregroundStyle(.secondary)
                         .help("Paste API key")
 
+                        let keyIcon: String = if showKey { "eye.slash.fill" } else { "eye.fill" }
+                        let keyHelp: String = if showKey { "Hide key" } else { "Show key" }
                         Button {
                             showKey.toggle()
                         } label: {
-                            Image(systemName: showKey ? "eye.slash.fill" : "eye.fill")
+                            Image(systemName: keyIcon)
                         }
                         .buttonStyle(.borderless)
                         .foregroundStyle(.secondary)
-                        .help(showKey ? "Hide key" : "Show key")
+                        .help(keyHelp)
                     }
                 } label: {
                     Label("API Key", systemImage: "key.fill")
@@ -163,7 +165,8 @@ struct ContentView: View {
                 } label: {
                     HStack(spacing: 6) {
                         if isWorking { ProgressView().controlSize(.small) }
-                        Text(isEnabled ? "Update" : "Connect & Enable")
+                        let actionTitle: String = if isEnabled { "Update" } else { "Connect & Enable" }
+                        Text(actionTitle)
                     }
                     .frame(minWidth: 132)
                 }

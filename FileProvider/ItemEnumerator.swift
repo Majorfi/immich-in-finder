@@ -11,7 +11,7 @@ actor ImmichCache {
     private var cityListTask: Task<[PlaceSummary], Error>?
     private var tagListTask: Task<[TagSummary], Error>?
     private var assetTasks: [String: Task<[Asset], Error>] = [:]
-    private var timelineYearsTask: Task<[Int], Error>?
+    private var timelineYearsTask: Task<[Int], Never>?
     private var timelineMonthsTasks: [String: Task<[String], Never>] = [:]
 
     init(client: ImmichClient) {
@@ -94,24 +94,16 @@ actor ImmichCache {
         }
     }
 
-    // The timeline year/month lists each cost one server probe per period, so
-    // memoize them like the other containers instead of re-probing every pass.
-    func timelineYears() async throws -> [Int] {
+    // The timeline year/month lists come from the shared bucket fetch, so
+    // memoize them like the other containers instead of re-fetching every pass.
+    func timelineYears() async -> [Int] {
         if let existing = timelineYearsTask {
-            return try await existing.value
+            return await existing.value
         }
         let client = self.client
-        let task = Task { () async throws -> [Int] in
-            guard let range = try await client.assetYearRange() else { return [] }
-            return await client.nonEmptyYears(oldest: range.oldest, newest: range.newest)
-        }
+        let task = Task { await client.nonEmptyYears() }
         timelineYearsTask = task
-        do {
-            return try await task.value
-        } catch {
-            timelineYearsTask = nil
-            throw error
-        }
+        return await task.value
     }
 
     func timelineMonths(year: String) async -> [String] {
@@ -237,7 +229,7 @@ final class ItemEnumerator: NSObject, NSFileProviderEnumerator {
                     observer.didEnumerate(immichItems(from: assets, location: .album(id: id)))
                     observer.finishEnumerating(upTo: nil)
                 case .years:
-                    let years = try await cache.timelineYears()
+                    let years = await cache.timelineYears()
                     fileProviderLog.log("enumerated \(years.count, privacy: .public) timeline years")
                     observer.didEnumerate(years.map { YearItem(year: String($0)) })
                     observer.finishEnumerating(upTo: nil)
@@ -256,8 +248,8 @@ final class ItemEnumerator: NSObject, NSFileProviderEnumerator {
                     let counts = nameCounts(people.map { $0.name ?? "" })
                     fileProviderLog.log("enumerated \(people.count, privacy: .public) named people")
                     observer.didEnumerate(people.map {
-                        FolderItem(id: .person($0.id), parent: .peopleSection,
-                                   filename: disambiguatedName(base: $0.name ?? "", id: $0.id, counts: counts))
+                        FolderItem(id: .person($0.personID), parent: .peopleSection,
+                                   filename: disambiguatedName(base: $0.name ?? "", id: $0.personID, counts: counts))
                     })
                     observer.finishEnumerating(upTo: nil)
                 case .person(let id):
@@ -287,8 +279,8 @@ final class ItemEnumerator: NSObject, NSFileProviderEnumerator {
                     let counts = nameCounts(tags.map { $0.name })
                     fileProviderLog.log("enumerated \(tags.count, privacy: .public) tags")
                     observer.didEnumerate(tags.map {
-                        FolderItem(id: .tag($0.id), parent: .tagsSection,
-                                   filename: disambiguatedName(base: $0.name, id: $0.id, counts: counts))
+                        FolderItem(id: .tag($0.tagID), parent: .tagsSection,
+                                   filename: disambiguatedName(base: $0.name, id: $0.tagID, counts: counts))
                     })
                     observer.finishEnumerating(upTo: nil)
                 case .tag(let id):

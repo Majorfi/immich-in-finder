@@ -95,7 +95,7 @@ struct ImmichClient: Sendable {
         }
         try Self.ensureOK(response, path: "/api/assets")
         let decoded = try JSONDecoder().decode(UploadResponse.self, from: responseData)
-        return UploadResult(ID: decoded.id, isDuplicate: decoded.status == .duplicate)
+        return UploadResult(ID: decoded.assetID, isDuplicate: decoded.status == .duplicate)
     }
 
     // Builds the multipart body on disk on a background queue (off the
@@ -169,17 +169,6 @@ struct ImmichClient: Sendable {
         let body = MetadataSearchRequest(takenAfter: takenAfter, takenBefore: takenBefore, albumIds: albumIDs, personIds: personIDs, tagIds: tagIDs, isFavorite: isFavorite, city: city, country: country, page: page, size: size, order: order, withExif: true)
         let response: SearchResponse = try await postJSON(path: "/api/search/metadata", body: body)
         return SearchPage(assets: response.assets.items, nextPage: response.assets.nextPage)
-    }
-
-    func assetYearRange() async throws -> (oldest: Int, newest: Int)? {
-        async let oldestPage = searchMetadata(page: 1, size: 1, order: .asc)
-        async let newestPage = searchMetadata(page: 1, size: 1, order: .desc)
-        let (oldest, newest) = try await (oldestPage, newestPage)
-        guard let oldestYear = oldest.assets.first.flatMap({ Int($0.fileCreatedAt.prefix(4)) }),
-              let newestYear = newest.assets.first.flatMap({ Int($0.fileCreatedAt.prefix(4)) }) else {
-            return nil
-        }
-        return (oldestYear, newestYear)
     }
 
     // Pages through /api/search/metadata until exhausted, gathering every asset
@@ -284,12 +273,12 @@ struct ImmichClient: Sendable {
             .sorted()
     }
 
-    // Fall-open semantics: if the bucket fetch fails, keep every candidate year
-    // in the probed range. Years are the distinct 4-char prefixes of the bucket
-    // list, sorted descending to match the previous ordering.
-    func nonEmptyYears(oldest: Int, newest: Int) async -> [Int] {
+    // Distinct years that hold assets, taken straight from the bucket list (one
+    // GET covers the whole library). If the bucket fetch fails, return empty
+    // rather than probing the library's date range, mirroring nonEmptyMonths.
+    func nonEmptyYears() async -> [Int] {
         guard let buckets = try? await timelineBuckets() else {
-            return Array(oldest...newest).sorted(by: >)
+            return []
         }
         let years = Set(buckets.compactMap { Int($0.timeBucket.prefix(4)) })
         return years.sorted(by: >)
