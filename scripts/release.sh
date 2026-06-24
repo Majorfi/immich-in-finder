@@ -51,16 +51,27 @@ if [ -n "$VERSION" ]; then
 ## Changelog
 
 $CHANGELOG"
-    gh release create "v$VERSION" "$DMG" \
-        --repo Majorfi/immich-in-finder \
-        --title "Findich $VERSION" \
-        --notes "$NOTES"
-    echo "Published v$VERSION to GitHub Releases."
+    # Idempotent: if a previous run already created this release, just re-upload
+    # the DMG, so a failure in a later step can be fixed by re-running the script.
+    if gh release view "v$VERSION" --repo Majorfi/immich-in-finder >/dev/null 2>&1; then
+        gh release upload "v$VERSION" "$DMG" --repo Majorfi/immich-in-finder --clobber
+        echo "Re-uploaded the DMG to the existing v$VERSION release."
+    else
+        gh release create "v$VERSION" "$DMG" \
+            --repo Majorfi/immich-in-finder \
+            --title "Findich $VERSION" \
+            --notes "$NOTES"
+        echo "Published v$VERSION to GitHub Releases."
+    fi
 
     # Update the Sparkle appcast (signed with the EdDSA key in your Keychain) so
     # installed copies can auto-update. It is served from the site at
     # findich.app/appcast.xml, so commit and push site/ afterwards to publish it.
     SIGN_UPDATE=$(find ~/Library/Developer/Xcode/DerivedData -path '*artifacts/sparkle/Sparkle/bin/sign_update' | head -1)
+    if [ -z "$SIGN_UPDATE" ]; then
+        echo "sign_update not found. Build the app once so SPM resolves Sparkle, then re-run." >&2
+        exit 1
+    fi
     SIG_AND_LEN=$("$SIGN_UPDATE" "$DMG")
     DMG_URL="https://github.com/Majorfi/immich-in-finder/releases/download/v$VERSION/$APP_NAME.dmg"
     python3 scripts/update_appcast.py site/public/appcast.xml "$VERSION" "$DMG_URL" "$SIG_AND_LEN" "$CHANGELOG"
