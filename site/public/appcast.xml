@@ -5,6 +5,16 @@
     <link>https://findich.app/appcast.xml</link>
     <description>Updates for Findich, an Immich drive for the macOS Finder.</description>
     <language>en</language>
+    <item>
+      <title>Findich 1.2.1</title>
+      <pubDate>Wed, 24 Jun 2026 16:16:49 -0000</pubDate>
+      <description>- 971db82 fix(release): make the GitHub Release step idempotent and guard sign_update
+- aedffb9 chore(site): publish v1.2.0 in the Sparkle appcast</description>
+      <sparkle:version>1.2.1</sparkle:version>
+      <sparkle:shortVersionString>1.2.1</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+      <enclosure url="https://github.com/Majorfi/immich-in-finder/releases/download/v1.2.1/Findich.dmg" length="1942068" type="application/octet-stream" sparkle:edSignature="vt6M93wBuHNwXSZ+bIN54wXoOBaJ+LUCZc+PUI0fMfz6nD9yvSoxgRj89BHHLj3YAV47ptVTqLPC0FYMxhfGDQ=="/>
+    </item>
   <item><title>Findich 1.2.0</title><pubDate>Wed, 24 Jun 2026 15:55:46 -0000</pubDate><description>- 20f9b26 feat(app): add Sparkle auto-update with a signed GitHub-Releases appcast
 - ff53ec3 feat(site): serve the Sparkle appcast feed at /appcast.xml
 - bef5a3c fix(build): stamp the real version into the app and extension Info.plist
