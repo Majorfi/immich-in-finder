@@ -1,9 +1,18 @@
-<?xml version="1.0" encoding="utf-8"?>
-<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+<?xml version='1.0' encoding='utf-8'?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
   <channel>
     <title>Findich</title>
     <link>https://findich.app/appcast.xml</link>
     <description>Updates for Findich, an Immich drive for the macOS Finder.</description>
     <language>en</language>
-  </channel>
+  <item><title>Findich 1.2.0</title><pubDate>Wed, 24 Jun 2026 15:55:46 -0000</pubDate><description>- 20f9b26 feat(app): add Sparkle auto-update with a signed GitHub-Releases appcast
+- ff53ec3 feat(site): serve the Sparkle appcast feed at /appcast.xml
+- bef5a3c fix(build): stamp the real version into the app and extension Info.plist
+- 19b4018 docs: list the exact Immich API key permissions Findich needs
+- 6b3263c docs: add a security policy and a Gumroad funding link
+- ce245fc fix(build): exclude markdown from Xcode target sources
+- 0a5b5f6 docs(test): add diagnostic and testing documentation
+- fbc6d91 docs(app): document architecture and shared contracts
+- a0f8e7f chores: tidy-up repo from development garbage and start with clean state
+- 8017293 Findich: an Immich drive for the macOS Finder</description><sparkle:version>1.2.0</sparkle:version><sparkle:shortVersionString>1.2.0</sparkle:shortVersionString><sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion><enclosure url="https://github.com/Majorfi/immich-in-finder/releases/download/v1.2.0/Findich.dmg" length="1941997" type="application/octet-stream" sparkle:edSignature="h3luta8bbsKE8xfawiq3NpEdh5gxFH4KhUTsrl2AncuQwHnWB02RkgancZyRyRpWmiZ8/WV++t2/kaRCwuvwDg==" /></item></channel>
 </rss>
