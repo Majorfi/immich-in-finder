@@ -19,6 +19,9 @@ jobs:
       - name: Toolchain versions
         run: xcodebuild -version && swift --version
 
+      - name: Test the appcast generator
+        run: python3 scripts/test_update_appcast.py
+
       - name: Install XcodeGen
         run: brew install xcodegen
 

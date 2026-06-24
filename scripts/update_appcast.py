@@ -12,9 +12,25 @@ def escape(text):
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+def htmlNotes(changelog):
+    # Render the "- sha message" changelog as an HTML list inside CDATA, so Sparkle
+    # shows it formatted in the update dialog. escape() neutralises markup in commit
+    # messages and, since it turns ">" into "&gt;", also prevents a stray "]]>".
+    lines = [line[2:] for line in changelog.splitlines() if line.startswith("- ")]
+    if lines:
+        inner = "<ul>" + "".join("<li>%s</li>" % escape(line) for line in lines) + "</ul>"
+    else:
+        inner = escape(changelog.strip())
+    return "<![CDATA[%s]]>" % inner
+
+
 appcast, version, dmgURL, signOutput, changelog = sys.argv[1:6]
-signature = re.search(r'edSignature="([^"]+)"', signOutput).group(1)
-length = re.search(r'length="([^"]+)"', signOutput).group(1)
+signatureMatch = re.search(r'edSignature="([^"]+)"', signOutput)
+lengthMatch = re.search(r'length="([^"]+)"', signOutput)
+if signatureMatch is None or lengthMatch is None:
+    sys.exit("update_appcast: unexpected sign_update output: %r" % signOutput)
+signature = signatureMatch.group(1)
+length = lengthMatch.group(1)
 
 with open(appcast, encoding="utf-8") as handle:
     text = handle.read()
@@ -42,7 +58,7 @@ item = (
 ).format(
     v=escape(version),
     date=formatdate(localtime=False),
-    notes=escape(changelog),
+    notes=htmlNotes(changelog),
     url=escape(dmgURL),
     length=length,
     sig=signature,

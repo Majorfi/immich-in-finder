@@ -67,7 +67,7 @@ $CHANGELOG"
     # Update the Sparkle appcast (signed with the EdDSA key in your Keychain) so
     # installed copies can auto-update. It is served from the site at
     # findich.app/appcast.xml, so commit and push site/ afterwards to publish it.
-    SIGN_UPDATE=$(find ~/Library/Developer/Xcode/DerivedData -path '*artifacts/sparkle/Sparkle/bin/sign_update' | head -1)
+    SIGN_UPDATE="${SIGN_UPDATE:-$(find ~/Library/Developer/Xcode/DerivedData -path '*artifacts/sparkle/Sparkle/bin/sign_update' | head -1)}"
     if [ -z "$SIGN_UPDATE" ]; then
         echo "sign_update not found. Build the app once so SPM resolves Sparkle, then re-run." >&2
         exit 1
