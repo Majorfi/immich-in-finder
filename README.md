@@ -153,4 +153,4 @@ Use this project at your own risk.
 
 ## License
 
-GPL-3.0 (see [LICENSE](LICENSE)). Findich is an independent client: it only talks to Immich's HTTP API and bundles no Immich code, so it sets its own license.
+GPL-3.0 (see [LICENSE](LICENSE)).
