@@ -38,11 +38,17 @@ struct SystemKeychain: KeychainBacking {
     // on macOS, so an updated key never took effect); add only if absent.
     func save(_ apiKey: String) {
         let data = Data(apiKey.utf8)
-        let attributes: [String: Any] = [kSecValueData as String: data]
+        // AfterFirstUnlock lets the extension read the key in the background while
+        // the screen is locked; the default (WhenUnlocked) would block that.
+        let attributes: [String: Any] = [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
+        ]
         let status = SecItemUpdate(baseQuery() as CFDictionary, attributes as CFDictionary)
         if status == errSecItemNotFound {
             var query = baseQuery()
             query[kSecValueData as String] = data
+            query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
             SecItemAdd(query as CFDictionary, nil)
         }
     }
