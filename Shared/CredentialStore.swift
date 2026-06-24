@@ -15,8 +15,9 @@ protocol KeychainBacking: Sendable {
     func delete()
 }
 
-// The real Keychain. The SecItem* logic is preserved verbatim from the
-// previous CredentialStore so production reads/writes the exact same item.
+// The real Keychain. Items go in the data-protection keychain so access is gated
+// by the keychain access group (shared between the app and the extension) rather
+// than a per-binary ACL, which would otherwise re-prompt on every signed update.
 struct SystemKeychain: KeychainBacking {
     private let keychainService = "app.quub.immichdrive"
     private let keychainAccount = "immich-api-key"
@@ -28,7 +29,8 @@ struct SystemKeychain: KeychainBacking {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
             kSecAttrAccount as String: keychainAccount,
-            kSecAttrAccessGroup as String: AppGroup.keychainAccessGroup
+            kSecAttrAccessGroup as String: AppGroup.keychainAccessGroup,
+            kSecUseDataProtectionKeychain as String: true
         ]
     }
 
