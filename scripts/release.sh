@@ -11,11 +11,18 @@ ARCHIVE="$BUILD_DIR/$APP_NAME.xcarchive"
 EXPORT_DIR="$BUILD_DIR/export"
 DMG="$BUILD_DIR/$APP_NAME.dmg"
 
+# Optional version arg (e.g. ./scripts/release.sh 1.2.0). When set, it stamps the
+# build's CFBundleShortVersionString and CFBundleVersion, so a distributed DMG
+# carries the real version that auto-update compares against. Without it, the
+# build uses project.yml's version, which is fine for a local dev build only.
+VERSION="${1:-}"
+
 xcodegen generate
 
 xcodebuild -project ImmichDrive.xcodeproj -scheme "$SCHEME" \
   -configuration Release -destination 'generic/platform=macOS' \
-  -allowProvisioningUpdates -archivePath "$ARCHIVE" archive
+  -allowProvisioningUpdates -archivePath "$ARCHIVE" archive \
+  ${VERSION:+MARKETING_VERSION=$VERSION} ${VERSION:+CURRENT_PROJECT_VERSION=$VERSION}
 
 xcodebuild -exportArchive -archivePath "$ARCHIVE" \
   -exportOptionsPlist scripts/ExportOptions.plist -exportPath "$EXPORT_DIR" \
@@ -30,10 +37,9 @@ xcrun stapler staple "$DMG"
 
 echo "Done: $DMG (signed, notarized, stapled)."
 
-# Pass a version (e.g. ./scripts/release.sh 1.0.0) to also publish the DMG as a
-# GitHub Release. Omit it to just build the DMG locally (e.g. for Gumroad only).
-if [ -n "${1:-}" ]; then
-    VERSION="$1"
+# When a version was passed, also publish the DMG as a GitHub Release. Omit the
+# version to just build the DMG locally (e.g. for Gumroad only).
+if [ -n "$VERSION" ]; then
     # Build the notes from the commits since the previous release. The new tag is
     # created by `gh release create` below, so the latest existing tag is the
     # previous release; fetch first in case it was created remotely by gh.

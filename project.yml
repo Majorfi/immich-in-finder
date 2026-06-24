@@ -8,7 +8,7 @@ settings:
   base:
     DEVELOPMENT_TEAM: QZSF4W9PK3
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.1.0"
+    MARKETING_VERSION: "1.1.0"
     CURRENT_PROJECT_VERSION: "1"
     CODE_SIGN_STYLE: Automatic
     PRODUCT_NAME: "$(TARGET_NAME)"
@@ -37,6 +37,8 @@ targets:
         CFBundleName: Findich
         CFBundleDisplayName: Findich
         CFBundlePackageType: APPL
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSMinimumSystemVersion: "13.0"
         NSHumanReadableCopyright: ""
     dependencies:
@@ -62,6 +64,8 @@ targets:
       properties:
         CFBundleName: ImmichDriveFileProvider
         CFBundleDisplayName: Findich File Provider
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         NSExtension:
           NSExtensionFileProviderDocumentGroup: QZSF4W9PK3.app.quub.immichdrive
           NSExtensionFileProviderSupportsEnumeration: true
