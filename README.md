@@ -60,6 +60,31 @@ open ImmichDrive.xcodeproj
 
 In the app window, enter your server URL + API key and click **Connect & Enable**. "Findich" appears in the Finder sidebar under _Locations_.
 
+## API key permissions
+
+Immich scopes each API key to a set of permissions (Account Settings → API Keys). The simplest choice is a key with all permissions, since Findich reads most of your library and writes back to it. To scope it instead, here is exactly what it uses.
+
+Read (browsing, thumbnails, downloads):
+
+- `asset.read`: timeline, places, and album search
+- `asset.view`: thumbnails
+- `asset.download`: opening a photo (the original)
+- `album.read`: the Albums folder
+- `person.read`: the People folder
+- `tag.read`: the Tags folder
+
+Write (drag-in, rename, move, delete):
+
+- `asset.upload`: drop a file in to upload it
+- `asset.delete`: delete to trash
+- `album.create`: create an album (a new folder under Albums)
+- `album.update`: rename an album
+- `album.delete`: delete an album
+- `albumAsset.create`: add a photo to an album
+- `albumAsset.delete`: remove a photo from an album
+
+A key with only the read permissions still works for browsing and downloading. The write actions then fail cleanly in Finder instead of syncing back, which is a fine setup if you only want Findich for browsing.
+
 ## Signing
 
 File Provider extensions need a real provisioning profile (App Group + sandbox). `project.yml` is set up for team `QZSF4W9PK3` and bundle IDs `app.quub.immichdrive(.FileProvider)`. To build under your own account, change `DEVELOPMENT_TEAM`, the bundle identifiers, and the App Group id in `App/App.entitlements`, `FileProvider/FileProvider.entitlements`, and `Shared/AppGroup.swift`, then let Xcode's automatic signing register them.
