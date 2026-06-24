@@ -212,16 +212,15 @@ final class ImmichClientMockTests: XCTestCase {
     func testNonEmptyYearsDerivesFromBuckets() async throws {
         let json = #"[{"timeBucket":"2022-01-01","count":1},{"timeBucket":"2021-05-01","count":1},{"timeBucket":"2020-12-01","count":1},{"timeBucket":"2022-07-01","count":1}]"#
         let client = MockClient.make(json: json)
-        let years = await client.nonEmptyYears()
+        let years = try await client.nonEmptyYears()
         XCTAssertEqual(years, [2022, 2021, 2020])
     }
 
-    // Years come only from the bucket list, so a failed bucket fetch yields an
-    // empty list (there is no date range to fall back on, unlike nonEmptyMonths).
-    func testNonEmptyYearsEmptyOnError() async throws {
+    // Years come only from the bucket list, so a failed bucket fetch throws
+    // (the caller evicts and retries) rather than yielding an empty timeline.
+    func testNonEmptyYearsThrowsOnError() async {
         let client = MockClient.make { _ in (500, Data("{}".utf8)) }
-        let years = await client.nonEmptyYears()
-        XCTAssertEqual(years, [])
+        await XCTAssertThrowsErrorAsync(try await client.nonEmptyYears())
     }
 }
 

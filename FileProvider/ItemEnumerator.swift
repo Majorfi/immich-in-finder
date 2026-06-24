@@ -11,7 +11,7 @@ actor ImmichCache {
     private var cityListTask: Task<[PlaceSummary], Error>?
     private var tagListTask: Task<[TagSummary], Error>?
     private var assetTasks: [String: Task<[Asset], Error>] = [:]
-    private var timelineYearsTask: Task<[Int], Never>?
+    private var timelineYearsTask: Task<[Int], Error>?
     private var timelineMonthsTasks: [String: Task<[String], Never>] = [:]
 
     init(client: ImmichClient) {
@@ -96,14 +96,21 @@ actor ImmichCache {
 
     // The timeline year/month lists come from the shared bucket fetch, so
     // memoize them like the other containers instead of re-fetching every pass.
-    func timelineYears() async -> [Int] {
+    // Years evict on failure rather than caching an empty list, so a transient
+    // bucket-fetch error retries on the next pass instead of sticking.
+    func timelineYears() async throws -> [Int] {
         if let existing = timelineYearsTask {
-            return await existing.value
+            return try await existing.value
         }
         let client = self.client
-        let task = Task { await client.nonEmptyYears() }
+        let task = Task { try await client.nonEmptyYears() }
         timelineYearsTask = task
-        return await task.value
+        do {
+            return try await task.value
+        } catch {
+            timelineYearsTask = nil
+            throw error
+        }
     }
 
     func timelineMonths(year: String) async -> [String] {
@@ -229,7 +236,7 @@ final class ItemEnumerator: NSObject, NSFileProviderEnumerator {
                     observer.didEnumerate(immichItems(from: assets, location: .album(id: id)))
                     observer.finishEnumerating(upTo: nil)
                 case .years:
-                    let years = await cache.timelineYears()
+                    let years = try await cache.timelineYears()
                     fileProviderLog.log("enumerated \(years.count, privacy: .public) timeline years")
                     observer.didEnumerate(years.map { YearItem(year: String($0)) })
                     observer.finishEnumerating(upTo: nil)

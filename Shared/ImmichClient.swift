@@ -274,12 +274,10 @@ struct ImmichClient: Sendable {
     }
 
     // Distinct years that hold assets, taken straight from the bucket list (one
-    // GET covers the whole library). If the bucket fetch fails, return empty
-    // rather than probing the library's date range, mirroring nonEmptyMonths.
-    func nonEmptyYears() async -> [Int] {
-        guard let buckets = try? await timelineBuckets() else {
-            return []
-        }
+    // GET covers the whole library). Throws on a failed bucket fetch so the
+    // caller can evict and retry rather than memoizing an empty timeline.
+    func nonEmptyYears() async throws -> [Int] {
+        let buckets = try await timelineBuckets()
         let years = Set(buckets.compactMap { Int($0.timeBucket.prefix(4)) })
         return years.sorted(by: >)
     }

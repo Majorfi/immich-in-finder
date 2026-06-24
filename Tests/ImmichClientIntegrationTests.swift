@@ -30,8 +30,8 @@ final class ImmichClientIntegrationTests: IntegrationTestCase {
         }
     }
 
-    func testTimelineYears() async {
-        let years = await client.nonEmptyYears()
+    func testTimelineYears() async throws {
+        let years = try await client.nonEmptyYears()
         XCTAssertFalse(years.isEmpty, "a non-empty library should have at least one year")
     }
 

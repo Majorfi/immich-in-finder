@@ -94,4 +94,15 @@ final class ImmichCacheTests: XCTestCase {
         XCTAssertEqual(tCalls.count, 1)
         XCTAssertEqual(t1.map(\.tagID), ["t"])
     }
+
+    // A failed bucket fetch must not be memoized: timelineYears evicts on error
+    // so the next pass retries instead of leaving the Timeline stuck empty.
+    func testTimelineYearsNotCachedOnError() async throws {
+        let buckets = #"[{"timeBucket":"2024-03-01","count":1}]"#
+        let cache = ImmichCache(client: MockClient.make { _ in (500, Data("{}".utf8)) })
+        await XCTAssertThrowsErrorAsync(try await cache.timelineYears())
+        MockURLProtocol.handler = { _ in (200, Data(buckets.utf8)) }
+        let years = try await cache.timelineYears()
+        XCTAssertEqual(years, [2024], "the retry must refetch, not return a cached empty result")
+    }
 }
