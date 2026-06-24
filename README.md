@@ -168,6 +168,20 @@ Then build, notarize, staple, and package a DMG:
 
 The stapled `build/Findich.dmg` is the artifact to distribute: upload it to Gumroad, or pass a version to publish it on GitHub Releases too.
 
+### Smoke test before publishing
+
+Some behavior (the real Keychain, Sparkle, the Finder extension) needs a signed run and is not covered by the unit tests. Run this once per release, with version N already installed:
+
+1. `./scripts/release.sh N+1` to build, notarize, publish, and sign the appcast.
+2. Commit and push `site/public/appcast.xml`, then wait for the site to deploy.
+3. In version N: Findich menu → Check for Updates, which should offer N+1.
+4. Download it and confirm it installs and relaunches (the EdDSA signature verifies).
+5. Keychain: no keychain prompt during or after the update.
+6. Finder: "Findich" is still in the sidebar.
+7. File Provider: browse an album, open a photo (download), drag a file in (upload).
+8. Lock then unlock the screen, then browse again with no auth error.
+9. CI is green on the commit (pure logic plus the appcast generator test).
+
 ## Security usage note
 
 As with any software, there may still be bugs, edge-case errors, or incomplete hardening details. We aim to keep behavior safe, stable, and security-aware, but no software is perfect. We used AI models as a drafting and review aid during implementation.
