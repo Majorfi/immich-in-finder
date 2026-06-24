@@ -18,6 +18,12 @@ Findich/                     ← appears in the Finder sidebar
 └── Favorites/
 ```
 
+## Getting Findich
+
+Build it from source (see [Setup](#setup)) for free, or download a ready-to-run, signed and notarized build from [Gumroad](https://withquub.gumroad.com/l/grbwny). It's pay-what-you-want, and zero is a valid price.
+
+Why pay-what-you-want? Shipping a Mac app outside the App Store needs an Apple Developer Program membership ($99/year), plus Developer-ID signing and Apple notarization so Gatekeeper doesn't block it on first launch. The source is open and free to build yourself; the paid build just saves you the Xcode round-trip and helps cover those running costs.
+
 ## How it works
 
 - A small **container app** (`ImmichDrive`) registers a File Provider _domain_ and stores your server URL + API key (App Group `UserDefaults` + Keychain).
