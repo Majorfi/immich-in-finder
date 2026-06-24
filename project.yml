@@ -13,6 +13,10 @@ settings:
     CODE_SIGN_STYLE: Automatic
     PRODUCT_NAME: "$(TARGET_NAME)"
     ENABLE_HARDENED_RUNTIME: "YES"
+packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: 2.6.0
 targets:
   ImmichDrive:
     type: application
@@ -41,10 +45,14 @@ targets:
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSMinimumSystemVersion: "13.0"
         NSHumanReadableCopyright: ""
+        SUFeedURL: https://findich.app/appcast.xml
+        SUPublicEDKey: "94jQG1X0RJQd4ggp3KONMl8KhN9InckUTUeqDFLrsxs="
+        SUEnableInstallerLauncherService: true
     dependencies:
       - target: ImmichDriveFileProvider
         embed: true
       - sdk: FileProvider.framework
+      - package: Sparkle
   ImmichDriveFileProvider:
     type: app-extension
     platform: macOS

@@ -56,4 +56,13 @@ $CHANGELOG"
         --title "Findich $VERSION" \
         --notes "$NOTES"
     echo "Published v$VERSION to GitHub Releases."
+
+    # Update the Sparkle appcast (signed with the EdDSA key in your Keychain) so
+    # installed copies can auto-update. It is served from the site at
+    # findich.app/appcast.xml, so commit and push site/ afterwards to publish it.
+    SIGN_UPDATE=$(find ~/Library/Developer/Xcode/DerivedData -path '*artifacts/sparkle/Sparkle/bin/sign_update' | head -1)
+    SIG_AND_LEN=$("$SIGN_UPDATE" "$DMG")
+    DMG_URL="https://github.com/Majorfi/immich-in-finder/releases/download/v$VERSION/$APP_NAME.dmg"
+    python3 scripts/update_appcast.py site/public/appcast.xml "$VERSION" "$DMG_URL" "$SIG_AND_LEN" "$CHANGELOG"
+    echo "Updated site/public/appcast.xml. Commit and push site/ to publish the update."
 fi
