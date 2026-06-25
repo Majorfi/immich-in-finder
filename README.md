@@ -175,17 +175,17 @@ Then build, notarize, staple, and package a DMG:
 
 ```bash
 ./scripts/release.sh            # build build/Findich.dmg
-./scripts/release.sh 1.0.0      # ...and also publish it as a GitHub Release
+./scripts/release.sh 1.0.0      # ...and publish: GitHub Release, appcast, Homebrew cask
 ```
 
-The stapled `build/Findich.dmg` is the artifact to distribute: upload it to Gumroad, or pass a version to publish it on GitHub Releases too.
+The stapled `build/Findich.dmg` is the artifact to distribute: upload it to Gumroad, or pass a version to do the rest. With a version, the script also creates the GitHub Release, commits and pushes `site/public/appcast.xml`, and bumps the Homebrew cask (version + sha256) in the tap, committing and pushing it. The tap is a sibling `../homebrew-tap` clone by default; set `TAP_DIR` if yours is elsewhere.
 
 ### Smoke test before publishing
 
 Some behavior (the real Keychain, Sparkle, the Finder extension) needs a signed run and is not covered by the unit tests. Run this once per release, with version N already installed:
 
-1. `./scripts/release.sh N+1` to build, notarize, publish, and sign the appcast.
-2. Commit and push `site/public/appcast.xml`, then wait for the site to deploy.
+1. `./scripts/release.sh N+1` — builds, notarizes, publishes the GitHub Release, pushes the appcast, and bumps the Homebrew cask.
+2. Wait for the site to deploy so the appcast is live.
 3. In version N: Findich menu → Check for Updates, which should offer N+1.
 4. Download it and confirm it installs and relaunches (the EdDSA signature verifies).
 5. Keychain: no keychain prompt during or after the update.
