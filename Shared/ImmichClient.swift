@@ -375,7 +375,10 @@ struct ImmichClient: Sendable {
     // the request to a different endpoint. Immich ids are UUIDs, so this is a no-op
     // for honest data.
     private func pathSegment(_ value: String) -> String {
-        value.addingPercentEncoding(withAllowedCharacters: ImmichClient.pathSegmentAllowed) ?? ""
+        // Encoding only returns nil for malformed unicode (which cannot contain the
+        // path-special characters this guards against), so fall back to the value
+        // unchanged rather than to "", which would collapse the path (e.g. //).
+        value.addingPercentEncoding(withAllowedCharacters: ImmichClient.pathSegmentAllowed) ?? value
     }
 
     // MARK: - Retry / backoff

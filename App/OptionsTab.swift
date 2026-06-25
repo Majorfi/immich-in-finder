@@ -36,7 +36,7 @@ struct OptionsTab: View {
                             .textFieldStyle(.roundedBorder)
                             .multilineTextAlignment(.trailing)
                             .frame(width: 72)
-                        Stepper("", value: $chunking.size, in: 100...10000, step: 100)
+                        Stepper("", value: $chunking.size, in: ChunkingSettings.sizeRange, step: 100)
                             .labelsHidden()
                     }
                 }

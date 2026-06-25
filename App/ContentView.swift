@@ -259,6 +259,7 @@ struct ContentView: View {
         let previous = CredentialStore.load()
         CredentialStore.save(baseURL: baseURL, apiKey: apiKey)
         VisibleSections.save(visibleSections)
+        chunking = chunking.clampedToValidSize()
         ChunkingSettings.save(chunking)
         let credentialsChanged = previous?.apiKey != apiKey || previous?.baseURL.absoluteString != baseURL
         do {

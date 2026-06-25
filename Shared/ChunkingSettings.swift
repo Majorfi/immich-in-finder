@@ -1,6 +1,6 @@
 import Foundation
 
-// When a folder holds more than `threshold` assets, the extension splits it into
+// When a folder holds more than `size` assets, the extension splits it into
 // fixed-size sub-folders ("chunks") of `size` assets each, so a very large album
 // shows as a handful of folders that each paint independently instead of one
 // folder that must fully materialize before Finder draws anything. Opt-in:
@@ -36,6 +36,18 @@ struct ChunkingSettings: Sendable, Equatable {
             size: size,
             strategy: strategy
         )
+    }
+
+    // Allowed page sizes. The Options stepper uses this, and the app clamps the
+    // free-form size field to it before saving, so a typed value can't persist
+    // out of range and then read back as the default (which looks like the field
+    // is being ignored).
+    static let sizeRange = 100...10_000
+
+    func clampedToValidSize() -> ChunkingSettings {
+        var copy = self
+        copy.size = min(max(size, ChunkingSettings.sizeRange.lowerBound), ChunkingSettings.sizeRange.upperBound)
+        return copy
     }
 
     static func save(_ settings: ChunkingSettings) {
