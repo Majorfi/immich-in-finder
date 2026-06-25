@@ -13,6 +13,8 @@ settings:
     CODE_SIGN_STYLE: Automatic
     PRODUCT_NAME: "$(TARGET_NAME)"
     ENABLE_HARDENED_RUNTIME: "YES"
+    DEAD_CODE_STRIPPING: "YES"
+    ENABLE_USER_SCRIPT_SANDBOXING: "YES"
 packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
@@ -48,6 +50,12 @@ targets:
         SUFeedURL: https://findich.app/appcast.xml
         SUPublicEDKey: "94jQG1X0RJQd4ggp3KONMl8KhN9InckUTUeqDFLrsxs="
         SUEnableInstallerLauncherService: true
+        # Self-hosters reach Immich over plain http (LAN IP, Tailscale 100.64/10,
+        # reverse proxies without TLS). ATS blocks cleartext by default, so the
+        # connection test fails before any request leaves the machine. The app only
+        # ever contacts the single user-supplied server with the user's own key.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
     dependencies:
       - target: ImmichDriveFileProvider
         embed: true
@@ -74,6 +82,10 @@ targets:
         CFBundleDisplayName: Findich File Provider
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        # ATS is enforced per bundle, so the extension needs its own exception: it
+        # enumerates and downloads over the same plain-http server as the app.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
         NSExtension:
           NSExtensionFileProviderDocumentGroup: QZSF4W9PK3.app.quub.immichdrive
           NSExtensionFileProviderSupportsEnumeration: true
