@@ -52,6 +52,91 @@ extension AssetLocation {
         case .favorite:                     return "favorites"
         }
     }
+
+    // A compact, reversible encoding embedded inside a chunk folder's identifier
+    // (chunk:<index>:<code>), so a chunk knows which location it slices. Country
+    // is assumed colon-free (the same assumption the qasset identifier makes), so
+    // the city, last, may contain anything.
+    var code: String {
+        switch self {
+        case .album(let id):                return "a:\(id)"
+        case .month(let yearMonth):         return "m:\(yearMonth)"
+        case .person(let id):               return "p:\(id)"
+        case .place(let country, let city): return "c:\(country):\(city)"
+        case .tag(let id):                  return "t:\(id)"
+        case .favorite:                     return "f"
+        }
+    }
+
+    init?(code: String) {
+        if code == "f" {
+            self = .favorite
+            return
+        }
+        if code.hasPrefix("a:") {
+            self = .album(id: String(code.dropFirst(2)))
+            return
+        }
+        if code.hasPrefix("m:") {
+            self = .month(yearMonth: String(code.dropFirst(2)))
+            return
+        }
+        if code.hasPrefix("p:") {
+            self = .person(id: String(code.dropFirst(2)))
+            return
+        }
+        if code.hasPrefix("t:") {
+            self = .tag(id: String(code.dropFirst(2)))
+            return
+        }
+        if code.hasPrefix("c:") {
+            let parts = code.dropFirst(2).split(separator: ":", maxSplits: 1).map(String.init)
+            if parts.count == 2 {
+                self = .place(country: parts[0], city: parts[1])
+                return
+            }
+        }
+        return nil
+    }
+
+    // Whether the date strategy groups this location into year/month folders. The
+    // grouping comes from each asset's capture date in the fetched membership, so
+    // it could technically apply anywhere; it is deliberately left off for the
+    // Timeline months (a month is already the finest date unit) and for Places,
+    // which stay on page chunks. Albums, People, Tags, and Favorites get the tree.
+    var supportsDateChunking: Bool {
+        switch self {
+        case .album, .person, .tag, .favorite: return true
+        case .month, .place:                   return false
+        }
+    }
+
+    // The paged /search/metadata query backing this location, so the one-to-one
+    // location->search mapping lives here instead of being spelled out at every
+    // call site that needs a page.
+    var search: AssetSearch {
+        switch self {
+        case .album(let id):                return .album(id: id)
+        case .month(let yearMonth):         return .month(yearMonth: yearMonth)
+        case .person(let id):               return .person(id: id)
+        case .place(let country, let city): return .place(country: country, city: city)
+        case .tag(let id):                  return .tag(id: id)
+        case .favorite:                     return .favorite
+        }
+    }
+}
+
+// Month symbol names, computed once. Read-only and value-typed, so safe to share.
+private let monthSymbolNames: [String] = DateFormatter().standaloneMonthSymbols ?? []
+
+// "2024-03" -> "03 - March", falling back to the raw month number. Shared by the
+// Timeline month folders and the date strategy's month folders.
+func monthDisplayName(_ yearMonth: String) -> String {
+    let monthNumber = Int(yearMonth.suffix(2)) ?? 0
+    if monthNumber >= 1, monthNumber <= monthSymbolNames.count {
+        return String(format: "%02d - %@", monthNumber, monthSymbolNames[monthNumber - 1].capitalized)
+    }
+    return String(yearMonth.suffix(2))
 }
 
 func nameCounts(_ names: [String]) -> [String: Int] {
@@ -80,11 +165,13 @@ func disambiguatedName(base: String, id: String, counts: [String: Int]) -> Strin
 }
 
 // The single chokepoint that turns a container's asset list into items, so
-// enumeration and single-item resolution name files identically.
-func immichItems(from assets: [Asset], location: AssetLocation) -> [ImmichItem] {
+// enumeration and single-item resolution name files identically. When `parent` is
+// set, the items report that sub-folder as their parent instead of the container
+// itself (a page folder, or a date folder for the date strategy).
+func immichItems(from assets: [Asset], location: AssetLocation, parent: ItemID? = nil) -> [ImmichItem] {
     let counts = nameCounts(assets.map { $0.originalFileName })
     return assets.map {
-        ImmichItem(asset: $0, location: location, filename: disambiguatedName(base: $0.originalFileName, id: $0.assetID, counts: counts))
+        ImmichItem(asset: $0, location: location, filename: disambiguatedName(base: $0.originalFileName, id: $0.assetID, counts: counts), parent: parent)
     }
 }
 
@@ -101,19 +188,28 @@ final class ImmichItem: NSObject, NSFileProviderItem {
     private let asset: Asset
     private let location: AssetLocation
     private let displayName: String
+    private let parentOverride: ItemID?
 
-    init(asset: Asset, location: AssetLocation, filename: String) {
+    init(asset: Asset, location: AssetLocation, filename: String, parent: ItemID? = nil) {
         self.asset = asset
         self.location = location
         self.displayName = filename
+        self.parentOverride = parent
     }
 
     var itemIdentifier: NSFileProviderItemIdentifier {
         location.assetItemID(asset.assetID).identifier
     }
 
+    // When the asset lives in a chunked container its parent is the sub-folder it
+    // was enumerated under (a page folder, or a year/month folder for the date
+    // strategy); the asset's own identity is unchanged so every write path keeps
+    // resolving it the same way.
     var parentItemIdentifier: NSFileProviderItemIdentifier {
-        location.parentItemID.identifier
+        if let parentOverride {
+            return parentOverride.identifier
+        }
+        return location.parentItemID.identifier
     }
 
     var filename: String {
@@ -322,20 +418,80 @@ final class MonthItem: NSObject, NSFileProviderItem {
         ItemID.year(String(yearMonth.prefix(4))).identifier
     }
 
-    private static let monthNames: [String] = DateFormatter().standaloneMonthSymbols ?? []
-
     var filename: String {
-        let monthNumber = Int(yearMonth.suffix(2)) ?? 0
-        if monthNumber >= 1, monthNumber <= MonthItem.monthNames.count {
-            return String(format: "%02d - %@", monthNumber, MonthItem.monthNames[monthNumber - 1].capitalized)
-        }
-        return String(yearMonth.suffix(2))
+        monthDisplayName(yearMonth)
     }
 
     var contentType: UTType { .folder }
     var capabilities: NSFileProviderItemCapabilities { [.allowsContentEnumerating, .allowsReading] }
     var itemVersion: NSFileProviderItemVersion {
         let version = Data("month:\(yearMonth):named".utf8)
+        return NSFileProviderItemVersion(contentVersion: version, metadataVersion: version)
+    }
+}
+
+// Overflow-safe 0-based half-open slice bounds for page `index` of `total` items
+// at `size` per page. `index` can arrive from a crafted or stale identifier, so it
+// is clamped into the valid page range before any multiplication (the multiply
+// would otherwise trap on a huge index, before any later min could bound it).
+func chunkSlice(index: Int, size: Int, total: Int) -> Range<Int> {
+    let bounded = max(0, total)
+    guard size > 0 else {
+        return 0..<0
+    }
+    let pages = max(0, bounded - 1) / size + 1
+    let clampedIndex = min(max(0, index), pages - 1)
+    let start = clampedIndex * size
+    let end = min(start + size, bounded)
+    return start..<end
+}
+
+// Zero-padded "first-last" label for page `index` of `total` items at `size` per
+// page, so the page folders sort in order in Finder. Shared by the flat page
+// folders and the date strategy's per-month page folders.
+func chunkRangeLabel(index: Int, size: Int, total: Int) -> String {
+    let slice = chunkSlice(index: index, size: size, total: total)
+    let width = String(max(0, total)).count
+    return String(format: "%0\(width)d-%0\(width)d", slice.lowerBound + 1, slice.upperBound)
+}
+
+// One slice of a large asset container, shown as a sub-folder. Its name is a
+// zero-padded "first-last" range so the folders sort in order in Finder, and its
+// parent is the container the slice belongs to (album, month, person, ...).
+final class ChunkFolderItem: NSObject, NSFileProviderItem {
+    private let location: AssetLocation
+    private let index: Int
+    private let size: Int
+    private let totalCount: Int
+
+    init(location: AssetLocation, index: Int, size: Int, totalCount: Int) {
+        self.location = location
+        self.index = index
+        self.size = size
+        self.totalCount = totalCount
+    }
+
+    var itemIdentifier: NSFileProviderItemIdentifier {
+        ItemID.chunk(location: location, index: index).identifier
+    }
+
+    var parentItemIdentifier: NSFileProviderItemIdentifier {
+        location.parentItemID.identifier
+    }
+
+    var filename: String {
+        chunkRangeLabel(index: index, size: size, total: totalCount)
+    }
+
+    var contentType: UTType { .folder }
+    var capabilities: NSFileProviderItemCapabilities { [.allowsContentEnumerating, .allowsReading] }
+
+    var childItemCount: NSNumber? {
+        NSNumber(value: chunkSlice(index: index, size: size, total: totalCount).count)
+    }
+
+    var itemVersion: NSFileProviderItemVersion {
+        let version = Data("chunk:\(location.code):\(index):\(totalCount)".utf8)
         return NSFileProviderItemVersion(contentVersion: version, metadataVersion: version)
     }
 }

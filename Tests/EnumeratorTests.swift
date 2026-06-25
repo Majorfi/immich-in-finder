@@ -6,13 +6,42 @@ import FileProvider
 final class MockEnumObserver: NSObject, NSFileProviderEnumerationObserver {
     var items: [NSFileProviderItem] = []
     var error: Error?
+    var didEnumerateCalls = 0
+    var lastUpTo: NSFileProviderPage?
     let done = XCTestExpectation(description: "enumeration finished")
 
     func didEnumerate(_ updatedItems: [any NSFileProviderItemProtocol]) {
+        didEnumerateCalls += 1
         items.append(contentsOf: updatedItems)
     }
-    func finishEnumerating(upTo nextPage: NSFileProviderPage?) { done.fulfill() }
+    func finishEnumerating(upTo nextPage: NSFileProviderPage?) { lastUpTo = nextPage; done.fulfill() }
     func finishEnumeratingWithError(_ error: any Error) { self.error = error; done.fulfill() }
+}
+
+// Captures a change round: the didUpdate items and the final (anchor, moreComing)
+// the enumerator reports, so the no-op change feed can be asserted without the
+// File Provider system.
+final class MockChangeObserver: NSObject, NSFileProviderChangeObserver {
+    var updated: [NSFileProviderItem] = []
+    var deleted: [NSFileProviderItemIdentifier] = []
+    var didUpdateCalls = 0
+    var finalAnchor: NSFileProviderSyncAnchor?
+    var moreComing = false
+    let done = XCTestExpectation(description: "changes finished")
+
+    func didUpdate(_ updatedItems: [any NSFileProviderItemProtocol]) {
+        didUpdateCalls += 1
+        updated.append(contentsOf: updatedItems)
+    }
+    func didDeleteItems(withIdentifiers deletedItemIdentifiers: [NSFileProviderItemIdentifier]) {
+        deleted.append(contentsOf: deletedItemIdentifiers)
+    }
+    func finishEnumeratingChanges(upTo anchor: NSFileProviderSyncAnchor, moreComing: Bool) {
+        finalAnchor = anchor
+        self.moreComing = moreComing
+        done.fulfill()
+    }
+    func finishEnumeratingWithError(_ error: any Error) { done.fulfill() }
 }
 
 final class EnumeratorTests: XCTestCase {
@@ -60,6 +89,59 @@ final class EnumeratorTests: XCTestCase {
         }
     }
 
+    // A client whose /api/search/metadata returns nextPage:"2" on the first call
+    // and null afterwards, so a folder spans two pages.
+    private func twoPageSearchClient() -> ImmichClient {
+        let calls = AtomicInt()
+        let item = Fixtures.assetJSON()
+        return MockClient.make { _ in
+            let next: String
+            if calls.next() == 1 {
+                next = "\"2\""
+            } else {
+                next = "null"
+            }
+            return (200, Data(#"{"assets":{"items":[\#(item)],"nextPage":\#(next)}}"#.utf8))
+        }
+    }
+
+    // enumerateItems paginates: page 1 delivers its items and hands back a non-nil
+    // cursor pointing at page 2; the system re-enters with that cursor, which
+    // delivers the last page and finishes upTo nil. Only one page is held at a time.
+    func testEnumerateItemsPaginates() async {
+        let client = twoPageSearchClient()
+        let enumerator = ItemEnumerator(client: client, cache: ImmichCache(client: client), container: .favorites)
+
+        let first = MockEnumObserver()
+        enumerator.enumerateItems(for: first, startingAt: NSFileProviderPage(NSFileProviderPage.initialPageSortedByName as Data))
+        await fulfillment(of: [first.done], timeout: 10)
+        XCTAssertNil(first.error)
+        XCTAssertEqual(first.items.count, 1, "page 1 of the two-page mock holds one item")
+        XCTAssertNotNil(first.lastUpTo, "more pages remain, so a cursor is handed back")
+        XCTAssertEqual(first.lastUpTo.map { immichPageNumber(from: $0) }, 2, "cursor points at page 2")
+
+        let second = MockEnumObserver()
+        enumerator.enumerateItems(for: second, startingAt: first.lastUpTo!)
+        await fulfillment(of: [second.done], timeout: 10)
+        XCTAssertNil(second.error)
+        XCTAssertEqual(second.items.count, 1, "page 2 delivers the remaining item")
+        XCTAssertNil(second.lastUpTo, "the last page finishes upTo nil")
+    }
+
+    // enumerateChanges is a no-op for every container: no didUpdate, finishes
+    // moreComing false against the same anchor it was given.
+    func testEnumerateChangesIsNoOp() async {
+        let client = MockClient.immichLike(citiesReturnAsset: true)
+        let enumerator = ItemEnumerator(client: client, cache: ImmichCache(client: client), container: .favorites)
+        let changes = MockChangeObserver()
+        let anchor = NSFileProviderSyncAnchor(Data("static".utf8))
+        enumerator.enumerateChanges(for: changes, from: anchor)
+        await fulfillment(of: [changes.done], timeout: 5)
+        XCTAssertEqual(changes.didUpdateCalls, 0, "no incremental change feed")
+        XCTAssertFalse(changes.moreComing)
+        XCTAssertEqual(changes.finalAnchor?.rawValue, anchor.rawValue)
+    }
+
     // The sections container honours the visible-folders setting.
     func testSectionsRespectVisibility() async {
         VisibleSections.save([.albums])
@@ -79,12 +161,14 @@ final class EnumeratorTests: XCTestCase {
         XCTAssertNotNil(observer.error)
     }
 
-    func testSyncAnchorIsTheStableSentinel() async {
+    // currentSyncAnchor returns nil: with no change feed, the system re-runs the
+    // full enumerateItems on every reopen rather than asking for deltas.
+    func testSyncAnchorIsNil() async {
         let client = MockClient.immichLike(citiesReturnAsset: true)
-        let enumerator = ItemEnumerator(client: client, cache: ImmichCache(client: client), container: .albums)
+        let enumerator = ItemEnumerator(client: client, cache: ImmichCache(client: client), container: .favorites)
         let anchorExp = expectation(description: "anchor")
         enumerator.currentSyncAnchor { anchor in
-            XCTAssertEqual(anchor?.rawValue, Data("anchor-v1".utf8))
+            XCTAssertNil(anchor)
             anchorExp.fulfill()
         }
         await fulfillment(of: [anchorExp], timeout: 5)

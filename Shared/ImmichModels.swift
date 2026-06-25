@@ -120,6 +120,25 @@ struct MetadataSearchRequest: Encodable, Sendable {
     let withExif: Bool
 }
 
+// POST /api/search/statistics: the same filter set as MetadataSearchRequest but
+// without paging, returning just the total match count. This is the count source
+// for chunked folders; the search response's own `total` is deprecated since
+// v3.0.0, so the statistics endpoint is used instead.
+struct StatisticsSearchRequest: Encodable, Sendable {
+    var takenAfter: String? = nil
+    var takenBefore: String? = nil
+    var albumIds: [String]? = nil
+    var personIds: [String]? = nil
+    var tagIds: [String]? = nil
+    var isFavorite: Bool? = nil
+    var city: String? = nil
+    var country: String? = nil
+}
+
+struct SearchStatisticsResponse: Decodable, Sendable {
+    let total: Int
+}
+
 enum UploadStatus: String, Decodable, Sendable {
     case created
     case replaced
