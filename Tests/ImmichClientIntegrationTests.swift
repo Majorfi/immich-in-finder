@@ -59,14 +59,14 @@ final class ImmichClientIntegrationTests: IntegrationTestCase {
     func testSearchAllCityReturnsAssets() async throws {
         let places = try await client.listCities()
         let place = try XCTUnwrap(places.first)
-        let assets = try await client.searchAllCity(country: place.country, city: place.city)
+        let assets = try await client.searchAllViaPage(for: .place(country: place.country, city: place.city), size: 1000)
         XCTAssertFalse(assets.isEmpty, "the city's representative asset should be findable")
     }
 
     func testSearchAllTagReturnsAssets() async throws {
         let tags = try await client.listTags()
         for tag in tags.prefix(25) {
-            let assets = try await client.searchAllTag(tagID: tag.tagID)
+            let assets = try await client.searchAllViaPage(for: .tag(id: tag.tagID), size: 1000)
             if assets.isEmpty == false {
                 XCTAssertFalse(try XCTUnwrap(assets.first).assetID.isEmpty)
                 return

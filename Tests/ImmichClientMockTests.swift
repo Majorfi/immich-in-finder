@@ -128,7 +128,7 @@ final class ImmichClientMockTests: XCTestCase {
             let next: String = if calls.next() == 1 { "\"2\"" } else { "null" }
             return (200, Data(#"{"assets":{"items":[\#(item)],"nextPage":\#(next)}}"#.utf8))
         }
-        let assets = try await client.searchAllFavorites()
+        let assets = try await client.searchAllViaPage(for: .favorite, size: 1000)
         XCTAssertEqual(assets.count, 2, "two pages, one item each")
     }
 

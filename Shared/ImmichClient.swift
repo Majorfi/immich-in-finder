@@ -22,6 +22,27 @@ enum HTTPMethod: String, Sendable { case get = "GET"; case put = "PUT"; case pos
 struct SearchPage: Sendable {
     let assets: [Asset]
     let nextPage: String?
+
+    // A page has a successor only when the server reports a next page and the
+    // current page was non-empty, the same termination the full-list pager uses.
+    var hasMore: Bool {
+        nextPage != nil && assets.isEmpty == false
+    }
+}
+
+// Every asset container, keyed for paged /search/metadata streaming. All six
+// locations (albums included) enumerate and resolve through the same paged
+// /search/metadata path, so listing and single-asset resolution stay consistent.
+// One consequence: /search/metadata applies the default visibility filter, so an
+// album made of archived assets lists and resolves empty (the unpaged album
+// endpoint that includes archived now backs only the integration tests).
+enum AssetSearch: Sendable {
+    case album(id: String)
+    case month(yearMonth: String)
+    case person(id: String)
+    case place(country: String, city: String)
+    case tag(id: String)
+    case favorite
 }
 
 struct ImmichClient: Sendable {
@@ -44,11 +65,11 @@ struct ImmichClient: Sendable {
     }
 
     func downloadOriginal(assetID: String) async throws -> Data {
-        try await getBytes(path: "/api/assets/\(assetID)/original")
+        try await getBytes(path: "/api/assets/\(pathSegment(assetID))/original")
     }
 
     func downloadThumbnail(assetID: String, size: String?) async throws -> Data {
-        var path = "/api/assets/\(assetID)/thumbnail"
+        var path = "/api/assets/\(pathSegment(assetID))/thumbnail"
         if let size, size.isEmpty == false {
             path += "?size=\(size)"
         }
@@ -110,11 +131,17 @@ struct ImmichClient: Sendable {
                         prefix.appendString("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n")
                         prefix.appendString("\(value)\r\n")
                     }
+                    // Strip quote and CR/LF so a crafted filename can't break out of
+                    // the Content-Disposition header or inject extra multipart headers.
+                    let headerFilename = filename
+                        .replacingOccurrences(of: "\"", with: "")
+                        .replacingOccurrences(of: "\r", with: "")
+                        .replacingOccurrences(of: "\n", with: "")
                     prefix.appendString("--\(boundary)\r\n")
-                    prefix.appendString("Content-Disposition: form-data; name=\"assetData\"; filename=\"\(filename)\"\r\n")
+                    prefix.appendString("Content-Disposition: form-data; name=\"assetData\"; filename=\"\(headerFilename)\"\r\n")
                     prefix.appendString("Content-Type: application/octet-stream\r\n\r\n")
 
-                    FileManager.default.createFile(atPath: url.path, contents: nil)
+                    FileManager.default.createFile(atPath: url.path, contents: nil, attributes: [.posixPermissions: 0o600])
                     let writer = try FileHandle(forWritingTo: url)
                     defer { try? writer.close() }
                     try writer.write(contentsOf: prefix)
@@ -133,15 +160,15 @@ struct ImmichClient: Sendable {
     }
 
     func addAssets(albumID: String, assetIDs: [String]) async throws {
-        _ = try await sendJSON(method: .put, path: "/api/albums/\(albumID)/assets", body: AssetIDsRequest(ids: assetIDs))
+        _ = try await sendJSON(method: .put, path: "/api/albums/\(pathSegment(albumID))/assets", body: AssetIDsRequest(ids: assetIDs))
     }
 
     func removeAssets(albumID: String, assetIDs: [String]) async throws {
-        _ = try await sendJSON(method: .delete, path: "/api/albums/\(albumID)/assets", body: AssetIDsRequest(ids: assetIDs))
+        _ = try await sendJSON(method: .delete, path: "/api/albums/\(pathSegment(albumID))/assets", body: AssetIDsRequest(ids: assetIDs))
     }
 
     func renameAlbum(ID: String, name: String) async throws -> AlbumSummary {
-        let data = try await sendJSON(method: .patch, path: "/api/albums/\(ID)", body: UpdateAlbumRequest(albumName: name))
+        let data = try await sendJSON(method: .patch, path: "/api/albums/\(pathSegment(ID))", body: UpdateAlbumRequest(albumName: name))
         return try JSONDecoder().decode(AlbumSummary.self, from: data)
     }
 
@@ -162,7 +189,7 @@ struct ImmichClient: Sendable {
 
     // Removes the album grouping; the assets it held stay in the library.
     func deleteAlbum(ID: String) async throws {
-        _ = try await send(method: .delete, path: "/api/albums/\(ID)")
+        _ = try await send(method: .delete, path: "/api/albums/\(pathSegment(ID))")
     }
 
     func searchMetadata(takenAfter: String? = nil, takenBefore: String? = nil, albumIDs: [String]? = nil, personIDs: [String]? = nil, tagIDs: [String]? = nil, isFavorite: Bool? = nil, city: String? = nil, country: String? = nil, page: Int, size: Int, order: SortOrder) async throws -> SearchPage {
@@ -171,16 +198,63 @@ struct ImmichClient: Sendable {
         return SearchPage(assets: response.assets.items, nextPage: response.assets.nextPage)
     }
 
-    // Pages through /api/search/metadata until exhausted, gathering every asset
-    // matching the filter. Backs both the month (timeline) and album views, so
-    // album enumeration is bounded by page size instead of one unbounded fetch.
-    private func searchAll(albumIDs: [String]? = nil, personIDs: [String]? = nil, tagIDs: [String]? = nil, isFavorite: Bool? = nil, city: String? = nil, country: String? = nil, takenAfter: String? = nil, takenBefore: String? = nil) async throws -> [Asset] {
+    // Fetches exactly one /search/metadata page for a location, so enumeration can
+    // fill a folder a page at a time: each call hands back the next-page cursor and
+    // the system re-enters enumerateItems with it. The page is 1-based; the size is
+    // the caller's choice. order: .asc matches searchAllViaPage so paging stays
+    // stable across calls (no item shifts across a page boundary).
+    func searchPage(for location: AssetSearch, page: Int, size: Int) async throws -> SearchPage {
+        switch location {
+        case .album(let id):
+            return try await searchMetadata(albumIDs: [id], page: page, size: size, order: .asc)
+        case .month(let yearMonth):
+            let bounds = ImmichClient.monthBounds(yearMonth)
+            return try await searchMetadata(takenAfter: bounds.after, takenBefore: bounds.before, page: page, size: size, order: .asc)
+        case .person(let id):
+            return try await searchMetadata(personIDs: [id], page: page, size: size, order: .asc)
+        case .place(let country, let city):
+            return try await searchMetadata(city: city, country: country, page: page, size: size, order: .asc)
+        case .tag(let id):
+            return try await searchMetadata(tagIDs: [id], page: page, size: size, order: .asc)
+        case .favorite:
+            return try await searchMetadata(isFavorite: true, page: page, size: size, order: .asc)
+        }
+    }
+
+    // Total number of assets a location holds, from POST /api/search/statistics.
+    // Mirrors the searchPage filter mapping so the count matches exactly what
+    // enumeration would page through (same visibility filter, archived excluded).
+    // Used to decide how many chunk folders a large container splits into.
+    func searchStatistics(for location: AssetSearch) async throws -> Int {
+        let request: StatisticsSearchRequest
+        switch location {
+        case .album(let id):
+            request = StatisticsSearchRequest(albumIds: [id])
+        case .month(let yearMonth):
+            let bounds = ImmichClient.monthBounds(yearMonth)
+            request = StatisticsSearchRequest(takenAfter: bounds.after, takenBefore: bounds.before)
+        case .person(let id):
+            request = StatisticsSearchRequest(personIds: [id])
+        case .place(let country, let city):
+            request = StatisticsSearchRequest(city: city, country: country)
+        case .tag(let id):
+            request = StatisticsSearchRequest(tagIds: [id])
+        case .favorite:
+            request = StatisticsSearchRequest(isFavorite: true)
+        }
+        let response: SearchStatisticsResponse = try await postJSON(path: "/api/search/statistics", body: request)
+        return max(0, response.total)
+    }
+
+    // Fetches every asset for a location by paging /search/metadata at the given
+    // size to the end. The folder enumeration loads its full membership this way.
+    func searchAllViaPage(for location: AssetSearch, size: Int) async throws -> [Asset] {
         var all: [Asset] = []
         var page = 1
         while true {
-            let result = try await searchMetadata(takenAfter: takenAfter, takenBefore: takenBefore, albumIDs: albumIDs, personIDs: personIDs, tagIDs: tagIDs, isFavorite: isFavorite, city: city, country: country, page: page, size: 1000, order: .asc)
+            let result = try await searchPage(for: location, page: page, size: size)
             all.append(contentsOf: result.assets)
-            guard result.nextPage != nil, result.assets.isEmpty == false else {
+            if result.hasMore == false {
                 break
             }
             page += 1
@@ -188,37 +262,16 @@ struct ImmichClient: Sendable {
         return all
     }
 
-    func searchAllMonth(yearMonth: String) async throws -> [Asset] {
-        let bounds = ImmichClient.monthBounds(yearMonth)
-        return try await searchAll(takenAfter: bounds.after, takenBefore: bounds.before)
-    }
-
     // Album membership comes from the album endpoint, not /search/metadata: the
     // latter applies the default visibility filter and drops archived assets, so
     // an album of archived photos would enumerate empty.
     func searchAllAlbum(albumID: String) async throws -> [Asset] {
-        let detail: AlbumDetail = try await getJSON(path: "/api/albums/\(albumID)")
+        let detail: AlbumDetail = try await getJSON(path: "/api/albums/\(pathSegment(albumID))")
         return detail.assets
-    }
-
-    func searchAllPerson(personID: String) async throws -> [Asset] {
-        try await searchAll(personIDs: [personID])
-    }
-
-    func searchAllCity(country: String, city: String) async throws -> [Asset] {
-        try await searchAll(city: city, country: country)
-    }
-
-    func searchAllTag(tagID: String) async throws -> [Asset] {
-        try await searchAll(tagIDs: [tagID])
     }
 
     func listTags() async throws -> [TagSummary] {
         try await getJSON(path: "/api/tags")
-    }
-
-    func searchAllFavorites() async throws -> [Asset] {
-        try await searchAll(isFavorite: true)
     }
 
     // Distinct (country, city) places. The cities endpoint returns one
@@ -313,6 +366,19 @@ struct ImmichClient: Sendable {
         var request = URLRequest(url: url)
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         return request
+    }
+
+    private static let pathSegmentAllowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
+
+    // Percent-encodes a server-provided id before it goes into a request path, so a
+    // hostile id (one containing /, ?, #, or ..) cannot reframe the path or route
+    // the request to a different endpoint. Immich ids are UUIDs, so this is a no-op
+    // for honest data.
+    private func pathSegment(_ value: String) -> String {
+        // Encoding only returns nil for malformed unicode (which cannot contain the
+        // path-special characters this guards against), so fall back to the value
+        // unchanged rather than to "", which would collapse the path (e.g. //).
+        value.addingPercentEncoding(withAllowedCharacters: ImmichClient.pathSegmentAllowed) ?? value
     }
 
     // MARK: - Retry / backoff

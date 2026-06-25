@@ -11,6 +11,7 @@ actor ImmichCache {
     private var cityListTask: Task<[PlaceSummary], Error>?
     private var tagListTask: Task<[TagSummary], Error>?
     private var assetTasks: [String: Task<[Asset], Error>] = [:]
+    private var assetCountTasks: [String: Task<Int, Error>] = [:]
     private var timelineYearsTask: Task<[Int], Error>?
     private var timelineMonthsTasks: [String: Task<[String], Never>] = [:]
 
@@ -48,19 +49,43 @@ actor ImmichCache {
         }
     }
 
-    // One fetch path for every asset container; the location decides both the
-    // cache key and which server query backs it.
+    // Fetches and memoizes the full membership of an asset container. Backs
+    // single-asset resolution (item lookup, fetchContents); enumeration paginates
+    // separately so it never holds the whole folder at once.
     func assets(for location: AssetLocation) async throws -> [Asset] {
+        let key = location.cacheKey
+        if let existing = assetTasks[key] {
+            return try await existing.value
+        }
         let client = self.client
-        return try await cachedAssets(key: location.cacheKey) {
-            switch location {
-            case .album(let id):                return try await client.searchAllAlbum(albumID: id)
-            case .month(let yearMonth):         return try await client.searchAllMonth(yearMonth: yearMonth)
-            case .person(let id):               return try await client.searchAllPerson(personID: id)
-            case .place(let country, let city): return try await client.searchAllCity(country: country, city: city)
-            case .tag(let id):                  return try await client.searchAllTag(tagID: id)
-            case .favorite:                     return try await client.searchAllFavorites()
-            }
+        let search = location.search
+        let task = Task { try await client.searchAllViaPage(for: search, size: 1000) }
+        assetTasks[key] = task
+        do {
+            return try await task.value
+        } catch {
+            assetTasks[key] = nil
+            throw error
+        }
+    }
+
+    // Total asset count for a container, memoized like the asset lists. Backs the
+    // chunk-folder split: cheap (one /search/statistics call) so opening a large
+    // folder can list its chunk sub-folders without fetching every asset.
+    func assetCount(for location: AssetLocation) async throws -> Int {
+        let key = location.cacheKey
+        if let existing = assetCountTasks[key] {
+            return try await existing.value
+        }
+        let client = self.client
+        let search = location.search
+        let task = Task { try await client.searchStatistics(for: search) }
+        assetCountTasks[key] = task
+        do {
+            return try await task.value
+        } catch {
+            assetCountTasks[key] = nil
+            throw error
         }
     }
 
@@ -131,25 +156,12 @@ actor ImmichCache {
 
     func invalidate(_ location: AssetLocation) {
         assetTasks[location.cacheKey] = nil
+        assetCountTasks[location.cacheKey] = nil
     }
 
     func invalidateTimeline() {
         timelineYearsTask = nil
         timelineMonthsTasks = [:]
-    }
-
-    private func cachedAssets(key: String, fetch: @Sendable @escaping () async throws -> [Asset]) async throws -> [Asset] {
-        if let existing = assetTasks[key] {
-            return try await existing.value
-        }
-        let task = Task { try await fetch() }
-        assetTasks[key] = task
-        do {
-            return try await task.value
-        } catch {
-            assetTasks[key] = nil
-            throw error
-        }
     }
 }
 
@@ -189,6 +201,149 @@ enum EnumeratedContainer {
     case tags
     case tag(id: String)
     case favorites
+    case chunk(location: AssetLocation, index: Int)
+    case dateYear(location: AssetLocation, year: String)
+    case dateMonth(location: AssetLocation, yearMonth: String)
+    case datePage(location: AssetLocation, yearMonth: String, page: Int)
+}
+
+// Decodes the 1-based page number from a File Provider page cursor. The two
+// system sentinels and an empty cursor both mean the first page.
+func immichPageNumber(from page: NSFileProviderPage) -> Int {
+    let raw = page.rawValue
+    let isInitial = raw == NSFileProviderPage.initialPageSortedByName as Data
+        || raw == NSFileProviderPage.initialPageSortedByDate as Data
+    if isInitial || raw.isEmpty {
+        return 1
+    }
+    return Int(String(decoding: raw, as: UTF8.self)) ?? 1
+}
+
+// Fetches one /search/metadata page for a container and hands it to the observer,
+// finishing with the next page cursor while pages remain. The system re-enters
+// enumerateItems with that cursor, so the extension only ever holds one page,
+// which keeps memory bounded even for very large folders. A free function so the
+// enclosing Task never captures the non-Sendable ItemEnumerator.
+func enumerateAssetPage(_ location: AssetLocation, client: ImmichClient, page: NSFileProviderPage, observer: NSFileProviderEnumerationObserver) async throws {
+    let pageNumber = immichPageNumber(from: page)
+    let result = try await client.searchPage(for: location.search, page: pageNumber, size: 1000)
+    observer.didEnumerate(immichItems(from: result.assets, location: location))
+    if result.hasMore {
+        observer.finishEnumerating(upTo: NSFileProviderPage(Data(String(pageNumber + 1).utf8)))
+    } else {
+        observer.finishEnumerating(upTo: nil)
+    }
+}
+
+// Enumerates an asset container under the active chunking strategy. The date
+// strategy (for locations that support it) groups by year/month; otherwise the
+// page strategy splits into fixed-size slices when over the size; otherwise the
+// assets page directly. Listing page chunks needs only the count; the date
+// strategy needs the full membership, which it reuses for grouping and slicing.
+func enumerateAssetContainer(_ location: AssetLocation, cache: ImmichCache, client: ImmichClient, page: NSFileProviderPage, observer: NSFileProviderEnumerationObserver) async throws {
+    let settings = ChunkingSettings.load()
+    if settings.enabled, settings.strategy == .date, location.supportsDateChunking {
+        try await enumerateDateContainer(location, node: nil, cache: cache, observer: observer)
+        return
+    }
+    if settings.enabled {
+        let count = try await cache.assetCount(for: location)
+        if settings.isChunked(count: count) {
+            let chunks = settings.chunkCount(for: count)
+            fileProviderLog.log("chunking \(location.cacheKey, privacy: .public): \(count, privacy: .public) assets into \(chunks, privacy: .public) folders")
+            let items = (0..<chunks).map { ChunkFolderItem(location: location, index: $0, size: settings.size, totalCount: count) }
+            observer.didEnumerate(items)
+            observer.finishEnumerating(upTo: nil)
+            return
+        }
+    }
+    try await enumerateAssetPage(location, client: client, page: page, observer: observer)
+}
+
+// The ItemID and display name a layout node maps to for this location.
+func dateNodeID(_ node: DateChunkNode, location: AssetLocation) -> ItemID {
+    switch node {
+    case .year(let year):           return .dateYear(location: location, year: year)
+    case .month(let yearMonth):     return .dateMonth(location: location, yearMonth: yearMonth)
+    case .page(let yearMonth, let index): return .datePage(location: location, yearMonth: yearMonth, page: index)
+    }
+}
+
+// The ItemID a date node reports as its parent: its parent node, or the
+// container itself when that node sits at the top after collapsing.
+func dateParentID(of node: DateChunkNode, location: AssetLocation, layout: DateChunkLayout) -> ItemID {
+    guard let parent = layout.parentNode(of: node) else {
+        return location.parentItemID
+    }
+    return dateNodeID(parent, location: location)
+}
+
+func dateNodeName(_ node: DateChunkNode, layout: DateChunkLayout) -> String {
+    switch node {
+    case .year(let year):       return year
+    case .month(let yearMonth): return monthDisplayName(yearMonth)
+    case .page(let yearMonth, let index):
+        return chunkRangeLabel(index: index, size: layout.size, total: layout.count(month: yearMonth))
+    }
+}
+
+// Enumerates one node of the date tree (nil = the container itself). The whole
+// membership is fetched once and reused for both grouping and slicing, so every
+// level reads the same order:.asc list the resolver also sees.
+func enumerateDateContainer(_ location: AssetLocation, node: DateChunkNode?, cache: ImmichCache, observer: NSFileProviderEnumerationObserver) async throws {
+    let size = ChunkingSettings.load().size
+    let siblings = try await cache.assets(for: location)
+    let layout = DateChunkLayout(monthCounts: DateChunkLayout.counts(of: siblings), size: size)
+
+    // A page node is a leaf: deliver its month slice directly.
+    if case .page(let yearMonth, let index) = node {
+        let monthAssets = siblings.filter { DateChunkLayout.month(of: $0) == yearMonth }
+        let slice = Array(monthAssets[chunkSlice(index: index, size: size, total: monthAssets.count)])
+        observer.didEnumerate(immichItems(from: slice, location: location, parent: dateNodeID(.page(month: yearMonth, index: index), location: location)))
+        observer.finishEnumerating(upTo: nil)
+        return
+    }
+
+    // The container's own identifier, used as the parent of whatever it emits.
+    let containerID: ItemID
+    let children: DateChunkChildren
+    switch node {
+    case .year(let year):
+        containerID = .dateYear(location: location, year: year)
+        children = layout.yearChildren(year)
+    case .month(let yearMonth):
+        containerID = .dateMonth(location: location, yearMonth: yearMonth)
+        children = layout.monthChildren(yearMonth)
+    default:
+        containerID = location.parentItemID
+        if siblings.count <= size {
+            observer.didEnumerate(immichItems(from: siblings, location: location))
+            observer.finishEnumerating(upTo: nil)
+            return
+        }
+        children = layout.rootChildren()
+    }
+
+    switch children {
+    case .folders(let nodes):
+        fileProviderLog.log("date chunking \(location.cacheKey, privacy: .public): \(nodes.count, privacy: .public) folders under \(containerID.identifier.rawValue, privacy: .public)")
+        observer.didEnumerate(nodes.map { FolderItem(id: dateNodeID($0, location: location), parent: containerID, filename: dateNodeName($0, layout: layout)) })
+    case .assets(let yearMonth):
+        let monthAssets = siblings.filter { DateChunkLayout.month(of: $0) == yearMonth }
+        observer.didEnumerate(immichItems(from: monthAssets, location: location, parent: containerID))
+    }
+    observer.finishEnumerating(upTo: nil)
+}
+
+// Enumerates one chunk: a single /search/metadata page sized to the chunk size,
+// so the chunk holds exactly its slice. The page boundary matches the index math
+// the resolver uses (both over order:.asc), so an asset always lands in the chunk
+// folder that was listed for it.
+func enumerateChunkPage(_ location: AssetLocation, index: Int, client: ImmichClient, observer: NSFileProviderEnumerationObserver) async throws {
+    let size = ChunkingSettings.load().size
+    let result = try await client.searchPage(for: location.search, page: index + 1, size: size)
+    observer.didEnumerate(immichItems(from: result.assets, location: location, parent: ItemID.chunk(location: location, index: index)))
+    observer.finishEnumerating(upTo: nil)
 }
 
 final class ItemEnumerator: NSObject, NSFileProviderEnumerator {
@@ -207,8 +362,14 @@ final class ItemEnumerator: NSObject, NSFileProviderEnumerator {
     func enumerateItems(for observer: NSFileProviderEnumerationObserver, startingAt page: NSFileProviderPage) {
         // Bind the Sendable stored properties to locals so the Task does not
         // capture self (a non-Sendable NSObject), per Swift 6 region isolation.
+        // Asset containers paginate: each call fetches one page and finishes with
+        // the next cursor, so the system re-enters with it. Finder paints the
+        // folder only at the final finishEnumerating, but memory stays bounded to
+        // one page, which is what lets very large folders load at all.
         let container = self.container
         let cache = self.cache
+        let client = self.client
+        let page = page
         // The system's enumeration observer is not Sendable but is documented to
         // accept callbacks from any thread, so crossing into the Task is safe.
         nonisolated(unsafe) let observer = observer
@@ -231,10 +392,7 @@ final class ItemEnumerator: NSObject, NSFileProviderEnumerator {
                     })
                     observer.finishEnumerating(upTo: nil)
                 case .album(let id):
-                    let assets = try await cache.assets(for: .album(id: id))
-                    fileProviderLog.log("enumerated \(assets.count, privacy: .public) assets in album")
-                    observer.didEnumerate(immichItems(from: assets, location: .album(id: id)))
-                    observer.finishEnumerating(upTo: nil)
+                    try await enumerateAssetContainer(.album(id: id), cache: cache, client: client, page: page, observer: observer)
                 case .years:
                     let years = try await cache.timelineYears()
                     fileProviderLog.log("enumerated \(years.count, privacy: .public) timeline years")
@@ -246,10 +404,7 @@ final class ItemEnumerator: NSObject, NSFileProviderEnumerator {
                     observer.didEnumerate(months.map { MonthItem(yearMonth: $0) })
                     observer.finishEnumerating(upTo: nil)
                 case .month(let yearMonth):
-                    let assets = try await cache.assets(for: .month(yearMonth: yearMonth))
-                    fileProviderLog.log("timeline \(yearMonth, privacy: .public): \(assets.count, privacy: .public) assets")
-                    observer.didEnumerate(immichItems(from: assets, location: .month(yearMonth: yearMonth)))
-                    observer.finishEnumerating(upTo: nil)
+                    try await enumerateAssetContainer(.month(yearMonth: yearMonth), cache: cache, client: client, page: page, observer: observer)
                 case .people:
                     let people = try await cache.peopleList()
                     let counts = nameCounts(people.map { $0.name ?? "" })
@@ -260,10 +415,7 @@ final class ItemEnumerator: NSObject, NSFileProviderEnumerator {
                     })
                     observer.finishEnumerating(upTo: nil)
                 case .person(let id):
-                    let assets = try await cache.assets(for: .person(id: id))
-                    fileProviderLog.log("person \(id, privacy: .public): \(assets.count, privacy: .public) assets")
-                    observer.didEnumerate(immichItems(from: assets, location: .person(id: id)))
-                    observer.finishEnumerating(upTo: nil)
+                    try await enumerateAssetContainer(.person(id: id), cache: cache, client: client, page: page, observer: observer)
                 case .countries:
                     let places = try await cache.cityList()
                     let countries = Set(places.map { $0.country }).sorted()
@@ -277,10 +429,7 @@ final class ItemEnumerator: NSObject, NSFileProviderEnumerator {
                     observer.didEnumerate(cities.map { FolderItem(id: .city(country: country, city: $0), parent: .country(country), filename: $0) })
                     observer.finishEnumerating(upTo: nil)
                 case .place(let country, let city):
-                    let assets = try await cache.assets(for: .place(country: country, city: city))
-                    fileProviderLog.log("place \(city, privacy: .public): \(assets.count, privacy: .public) assets")
-                    observer.didEnumerate(immichItems(from: assets, location: .place(country: country, city: city)))
-                    observer.finishEnumerating(upTo: nil)
+                    try await enumerateAssetContainer(.place(country: country, city: city), cache: cache, client: client, page: page, observer: observer)
                 case .tags:
                     let tags = try await cache.tagList()
                     let counts = nameCounts(tags.map { $0.name })
@@ -291,15 +440,17 @@ final class ItemEnumerator: NSObject, NSFileProviderEnumerator {
                     })
                     observer.finishEnumerating(upTo: nil)
                 case .tag(let id):
-                    let assets = try await cache.assets(for: .tag(id: id))
-                    fileProviderLog.log("tag \(id, privacy: .public): \(assets.count, privacy: .public) assets")
-                    observer.didEnumerate(immichItems(from: assets, location: .tag(id: id)))
-                    observer.finishEnumerating(upTo: nil)
+                    try await enumerateAssetContainer(.tag(id: id), cache: cache, client: client, page: page, observer: observer)
                 case .favorites:
-                    let assets = try await cache.assets(for: .favorite)
-                    fileProviderLog.log("enumerated \(assets.count, privacy: .public) favorites")
-                    observer.didEnumerate(immichItems(from: assets, location: .favorite))
-                    observer.finishEnumerating(upTo: nil)
+                    try await enumerateAssetContainer(.favorite, cache: cache, client: client, page: page, observer: observer)
+                case .chunk(let location, let index):
+                    try await enumerateChunkPage(location, index: index, client: client, observer: observer)
+                case .dateYear(let location, let year):
+                    try await enumerateDateContainer(location, node: .year(year), cache: cache, observer: observer)
+                case .dateMonth(let location, let yearMonth):
+                    try await enumerateDateContainer(location, node: .month(yearMonth), cache: cache, observer: observer)
+                case .datePage(let location, let yearMonth, let pageIndex):
+                    try await enumerateDateContainer(location, node: .page(month: yearMonth, index: pageIndex), cache: cache, observer: observer)
                 }
             } catch {
                 fileProviderLog.error("enumeration failed for \(String(describing: container), privacy: .public): \(String(describing: error), privacy: .public)")
@@ -308,11 +459,20 @@ final class ItemEnumerator: NSObject, NSFileProviderEnumerator {
         }
     }
 
+    // Findich does not drive a per-folder change feed. In the replicated model the
+    // system only honors working-set signals and paints a folder only at its final
+    // finishEnumerating, so a change round reports nothing against the same anchor.
     func enumerateChanges(for observer: NSFileProviderChangeObserver, from anchor: NSFileProviderSyncAnchor) {
         observer.finishEnumeratingChanges(upTo: anchor, moreComing: false)
     }
 
+    // No sync anchor: Findich has no incremental change feed. A nil anchor makes
+    // the system re-run the full enumerateItems on every reopen and after every
+    // signalEnumerator, instead of calling the no-op enumerateChanges. A constant
+    // non-nil anchor (what this used to return) wrongly told the system the
+    // container never changes, so it stopped re-enumerating and served a stale or
+    // empty snapshot (folders not painting until you left and came back).
     func currentSyncAnchor(completionHandler: @escaping (NSFileProviderSyncAnchor?) -> Void) {
-        completionHandler(NSFileProviderSyncAnchor(Data("anchor-v1".utf8)))
+        completionHandler(nil)
     }
 }

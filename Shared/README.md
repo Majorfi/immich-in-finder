@@ -7,4 +7,6 @@ Code compiled into both targets, the [app](../App) and the [File Provider extens
 - `CredentialStore.swift`: reads and writes the server URL and API key in the Keychain, shared through the App Group.
 - `AppGroup.swift`: the shared App Group, domain, and UserDefaults identifiers.
 - `VisibleSections.swift`: which top-level folders appear in Finder, persisted in App Group defaults.
+- `ChunkingSettings.swift`: how a large folder splits (Pages or Year & month, and the page size), persisted in App Group defaults. The page-boundary math here is shared by enumeration and an asset's parent resolution, so they cannot disagree.
+- `DateChunkLayout.swift`: the pure year/month/page tree for the date strategy, derived from each asset's capture month so listing a folder and resolving an asset's parent always agree. No FileProvider dependency, so it is unit-tested directly.
 - `DomainRegistration.swift`: the add and remove-then-retry logic for registering the domain, factored out so it can be tested without `NSFileProviderManager`.

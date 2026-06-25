@@ -24,6 +24,15 @@ enum ItemID {
     case tagAsset(tagID: String, assetID: String)
     case favoritesSection
     case favoriteAsset(assetID: String)
+    // A synthetic sub-folder of a large asset container, holding one fixed-size
+    // slice of its assets. The location it slices is encoded inline so the chunk
+    // can both enumerate its page and report the right parent folder.
+    case chunk(location: AssetLocation, index: Int)
+    // The date strategy's folders: a year, a month, or one page of a large month.
+    // Each carries the location it groups so it can enumerate and parent itself.
+    case dateYear(location: AssetLocation, year: String)
+    case dateMonth(location: AssetLocation, yearMonth: String)
+    case datePage(location: AssetLocation, yearMonth: String, page: Int)
     case other
 
     init(_ identifier: NSFileProviderItemIdentifier) {
@@ -129,6 +138,37 @@ enum ItemID {
                 return
             }
         }
+        if raw.hasPrefix("chunk:") {
+            // index (digits, no colons) first, then the location code (which may
+            // itself contain colons for a place), so split only once.
+            let parts = raw.dropFirst("chunk:".count).split(separator: ":", maxSplits: 1).map(String.init)
+            if parts.count == 2, let index = Int(parts[0]), index >= 0, let location = AssetLocation(code: parts[1]) {
+                self = .chunk(location: location, index: index)
+                return
+            }
+        }
+        if raw.hasPrefix("dyear:") {
+            let parts = raw.dropFirst("dyear:".count).split(separator: ":", maxSplits: 1).map(String.init)
+            if parts.count == 2, let location = AssetLocation(code: parts[1]) {
+                self = .dateYear(location: location, year: parts[0])
+                return
+            }
+        }
+        if raw.hasPrefix("dmonth:") {
+            let parts = raw.dropFirst("dmonth:".count).split(separator: ":", maxSplits: 1).map(String.init)
+            if parts.count == 2, let location = AssetLocation(code: parts[1]) {
+                self = .dateMonth(location: location, yearMonth: parts[0])
+                return
+            }
+        }
+        if raw.hasPrefix("dpage:") {
+            // page (digits) then yearMonth ("YYYY-MM", no bare colon) then the code.
+            let parts = raw.dropFirst("dpage:".count).split(separator: ":", maxSplits: 2).map(String.init)
+            if parts.count == 3, let page = Int(parts[0]), page >= 0, let location = AssetLocation(code: parts[2]) {
+                self = .datePage(location: location, yearMonth: parts[1], page: page)
+                return
+            }
+        }
         self = .other
     }
 
@@ -198,6 +238,14 @@ enum ItemID {
             return NSFileProviderItemIdentifier(rawValue: "section:favorites")
         case .favoriteAsset(let assetID):
             return NSFileProviderItemIdentifier(rawValue: "fasset:\(assetID)")
+        case .chunk(let location, let index):
+            return NSFileProviderItemIdentifier(rawValue: "chunk:\(index):\(location.code)")
+        case .dateYear(let location, let year):
+            return NSFileProviderItemIdentifier(rawValue: "dyear:\(year):\(location.code)")
+        case .dateMonth(let location, let yearMonth):
+            return NSFileProviderItemIdentifier(rawValue: "dmonth:\(yearMonth):\(location.code)")
+        case .datePage(let location, let yearMonth, let page):
+            return NSFileProviderItemIdentifier(rawValue: "dpage:\(page):\(yearMonth):\(location.code)")
         case .other:
             return NSFileProviderItemIdentifier(rawValue: "")
         }
@@ -270,7 +318,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                         progress.completedUnitCount = 1
                         return
                     }
-                    completionHandler(ImmichItem(asset: resolved.asset, location: ref.location, filename: resolved.filename), nil)
+                    completionHandler(ImmichItem(asset: resolved.asset, location: ref.location, filename: resolved.filename, parent: resolved.parent), nil)
                 } catch {
                     completionHandler(nil, fileProviderError(from: error))
                 }
@@ -362,10 +410,51 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 progress.completedUnitCount = 1
             }
             return progress
+        case .chunk(let location, let index):
+            guard let cache else {
+                completionHandler(nil, Self.error(.notAuthenticated))
+                return progress
+            }
+            Task {
+                do {
+                    let count = try await cache.assetCount(for: location)
+                    let settings = ChunkingSettings.load()
+                    completionHandler(ChunkFolderItem(location: location, index: index, size: settings.size, totalCount: count), nil)
+                } catch {
+                    completionHandler(nil, fileProviderError(from: error))
+                }
+                progress.completedUnitCount = 1
+            }
+            return progress
+        case .dateYear(let location, let year):
+            return dateFolder(.year(year), location: location, cache: cache, progress: progress, completionHandler: completionHandler)
+        case .dateMonth(let location, let yearMonth):
+            return dateFolder(.month(yearMonth), location: location, cache: cache, progress: progress, completionHandler: completionHandler)
+        case .datePage(let location, let yearMonth, let page):
+            return dateFolder(.page(month: yearMonth, index: page), location: location, cache: cache, progress: progress, completionHandler: completionHandler)
         case .asset, .timelineAsset, .personAsset, .placeAsset, .tagAsset, .favoriteAsset, .other:
             completionHandler(nil, Self.error(.noSuchItem))
         }
         progress.completedUnitCount = 1
+        return progress
+    }
+
+    // Shared body for the three date-folder item(for:) cases: builds the folder
+    // from the current layout, or reports notAuthenticated without a client.
+    private func dateFolder(_ node: DateChunkNode, location: AssetLocation, cache: ImmichCache?, progress: Progress, completionHandler: @escaping (NSFileProviderItem?, Error?) -> Void) -> Progress {
+        nonisolated(unsafe) let completionHandler = completionHandler
+        guard let cache else {
+            completionHandler(nil, Self.error(.notAuthenticated))
+            return progress
+        }
+        Task {
+            do {
+                completionHandler(try await Self.dateFolderItem(node, location: location, cache: cache), nil)
+            } catch {
+                completionHandler(nil, fileProviderError(from: error))
+            }
+            progress.completedUnitCount = 1
+        }
         return progress
     }
 
@@ -390,7 +479,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 let data = try await client.downloadOriginal(assetID: ref.assetID)
                 fileProviderLog.log("fetchContents \(ref.assetID, privacy: .public): \(data.count, privacy: .public) bytes")
                 let url = try Self.writeTemporary(data: data, filename: resolved.filename)
-                completionHandler(url, ImmichItem(asset: resolved.asset, location: ref.location, filename: resolved.filename), nil)
+                completionHandler(url, ImmichItem(asset: resolved.asset, location: ref.location, filename: resolved.filename, parent: resolved.parent), nil)
             } catch {
                 fileProviderLog.error("fetchContents failed for \(ref.assetID, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 completionHandler(nil, nil, fileProviderError(from: error))
@@ -434,6 +523,14 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
             return ItemEnumerator(client: client, cache: cache, container: .tag(id: id))
         case .favoritesSection:
             return ItemEnumerator(client: client, cache: cache, container: .favorites)
+        case .chunk(let location, let index):
+            return ItemEnumerator(client: client, cache: cache, container: .chunk(location: location, index: index))
+        case .dateYear(let location, let year):
+            return ItemEnumerator(client: client, cache: cache, container: .dateYear(location: location, year: year))
+        case .dateMonth(let location, let yearMonth):
+            return ItemEnumerator(client: client, cache: cache, container: .dateMonth(location: location, yearMonth: yearMonth))
+        case .datePage(let location, let yearMonth, let page):
+            return ItemEnumerator(client: client, cache: cache, container: .datePage(location: location, yearMonth: yearMonth, page: page))
         case .asset, .timelineAsset, .personAsset, .placeAsset, .tagAsset, .favoriteAsset:
             throw Self.error(.noSuchItem)
         }
@@ -503,10 +600,11 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     progress.completedUnitCount = 1
                     return
                 }
-                completionHandler(ImmichItem(asset: resolved.asset, location: .album(id: albumID), filename: resolved.filename), [], false, nil)
+                let parent = await Self.assetParent(for: .album(id: albumID), asset: resolved.asset, in: siblings, cache: cache)
+                completionHandler(ImmichItem(asset: resolved.asset, location: .album(id: albumID), filename: resolved.filename, parent: parent), [], false, nil)
                 Self.signalChange(domain: domain, container: ItemID.album(albumID).identifier)
             } catch {
-                fileProviderLog.error("upload failed for \(filename, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                fileProviderLog.error("upload failed for \(filename, privacy: .private): \(error.localizedDescription, privacy: .public)")
                 completionHandler(nil, [], false, fileProviderError(from: error))
             }
             progress.completedUnitCount = 1
@@ -619,9 +717,57 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
 
     // Static so the async Tasks below can call it without capturing self (a
     // non-Sendable NSObject), which Swift 6 region isolation forbids.
-    private static func resolve(_ ref: (assetID: String, location: AssetLocation), cache: ImmichCache) async throws -> (asset: Asset, filename: String)? {
+    private static func resolve(_ ref: (assetID: String, location: AssetLocation), cache: ImmichCache) async throws -> (asset: Asset, filename: String, parent: ItemID?)? {
         let siblings = try await ref.location.siblings(from: cache)
-        return resolveAsset(ref.assetID, in: siblings)
+        guard let resolved = resolveAsset(ref.assetID, in: siblings) else {
+            return nil
+        }
+        let parent = await assetParent(for: ref.location, asset: resolved.asset, in: siblings, cache: cache)
+        return (resolved.asset, resolved.filename, parent)
+    }
+
+    // The sub-folder an asset reports as its parent, or nil when its container is
+    // not chunked. The position comes from the same order:.asc membership
+    // enumeration pages over, so the parent reported here matches the folder that
+    // listed it. The count falls back to the fetched membership if the statistics
+    // call fails, so resolution never breaks just because the count is briefly
+    // unavailable.
+    private static func assetParent(for location: AssetLocation, asset: Asset, in siblings: [Asset], cache: ImmichCache) async -> ItemID? {
+        let settings = ChunkingSettings.load()
+        guard settings.enabled else {
+            return nil
+        }
+        if settings.strategy == .date, location.supportsDateChunking {
+            guard siblings.count > settings.size else {
+                return nil
+            }
+            let layout = DateChunkLayout(monthCounts: DateChunkLayout.counts(of: siblings), size: settings.size)
+            let month = DateChunkLayout.month(of: asset)
+            let monthAssets = siblings.filter { DateChunkLayout.month(of: $0) == month }
+            guard let indexInMonth = monthAssets.firstIndex(where: { $0.assetID == asset.assetID }),
+                  let node = layout.assetParentNode(month: month, indexInMonth: indexInMonth) else {
+                return nil
+            }
+            return dateNodeID(node, location: location)
+        }
+        guard let position = siblings.firstIndex(where: { $0.assetID == asset.assetID }) else {
+            return nil
+        }
+        let count = (try? await cache.assetCount(for: location)) ?? siblings.count
+        guard settings.isChunked(count: count) else {
+            return nil
+        }
+        return ItemID.chunk(location: location, index: settings.chunkIndex(forAssetIndex: position, count: count))
+    }
+
+    // Builds the folder item for a date node out of context: fetches the
+    // membership, rebuilds the same layout the enumerator used, and reports the
+    // node's identifier, parent, and name from it.
+    private static func dateFolderItem(_ node: DateChunkNode, location: AssetLocation, cache: ImmichCache) async throws -> NSFileProviderItem {
+        let size = ChunkingSettings.load().size
+        let siblings = try await cache.assets(for: location)
+        let layout = DateChunkLayout(monthCounts: DateChunkLayout.counts(of: siblings), size: size)
+        return FolderItem(id: dateNodeID(node, location: location), parent: dateParentID(of: node, location: location, layout: layout), filename: dateNodeName(node, layout: layout))
     }
 
     private static func error(_ code: NSFileProviderError.Code) -> NSError {
@@ -635,7 +781,11 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
     private static func writeTemporary(data: Data, filename: String) throws -> URL {
         let safeName = filename.replacingOccurrences(of: "/", with: "_")
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString)-\(safeName)")
-        try data.write(to: url)
+        // Owner-only from creation: the decoded original is a private photo, so keep
+        // it out of reach of other same-user processes while it sits in the temp dir.
+        guard FileManager.default.createFile(atPath: url.path, contents: data, attributes: [.posixPermissions: 0o600]) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
         return url
     }
 

@@ -9,3 +9,4 @@ xcuserdata/
 *.generated.plist
 DerivedData/
 build/
+.local
