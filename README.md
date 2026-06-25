@@ -26,9 +26,11 @@ Why pay-what-you-want? Shipping a Mac app outside the App Store needs an Apple D
 
 ## How it works
 
-- A small **container app** (`ImmichDrive`) registers a File Provider _domain_ and stores your server URL + API key (App Group `UserDefaults` + Keychain).
+- A small **container app** (`ImmichDrive`) registers a File Provider _domain_ and stores your server URL + API key (App Group `UserDefaults` + Keychain). Its **Options** tab controls how large folders appear and reclaims disk:
+  - **Split large folders**: a folder over the chosen size is shown as sub-folders so each loads on its own. _Pages_ makes numbered slices (`0001-1000`, …); _Year & month_ groups by capture date (Places and Timeline months always use pages). Takes effect on the next Update.
+  - **Free up space**: reverts downloaded originals back to placeholders to reclaim disk; they re-download when next opened, and files in use are kept.
 - A **File Provider extension** (`NSFileProviderReplicatedExtension`) does the real work: enumerating albums and assets, serving thumbnails, and downloading originals on demand.
-- Both talk to Immich's REST API (`/api/albums`, `/api/assets/{id}/original`, `/api/assets/{id}/thumbnail`, …) using the `x-api-key` header.
+- Both talk to Immich's REST API (`/api/albums`, `/api/assets/{id}/original`, `/api/assets/{id}/thumbnail`, `/api/search/statistics`, …) using the `x-api-key` header.
 
 Note: photos Immich indexes from an **external library** are read-only. Findich browses and downloads them like any other asset, but it can't write them back; Immich owns those files and refreshes them from the source itself. Findich doesn't single them out in Finder yet, so a delete or move you try there just won't take.
 
@@ -147,6 +149,8 @@ The extension's `Info.plist` **must** include `NSExtensionFileProviderDocumentGr
 - [x] `Places/` view: `Country/City/` hierarchy (geocoding)
 - [x] `Tags/` view: tags as folders (`tagIds`)
 - [x] `Favorites/` view: favorited assets, flat (`isFavorite`)
+- [x] Options tab: split large folders into pages or year/month groups
+- [x] Free up space: evict downloaded originals back to placeholders
 - [ ] Full two-way sync: pull remote changes via `enumerateChanges` + sync anchors
 
 ## Releasing
@@ -179,10 +183,15 @@ Some behavior (the real Keychain, Sparkle, the Finder extension) needs a signed 
 5. Keychain: no keychain prompt during or after the update.
 6. Finder: "Findich" is still in the sidebar.
 7. File Provider: browse an album, open a photo (download), drag a file in (upload).
-8. Lock then unlock the screen, then browse again with no auth error.
-9. CI is green on the commit (pure logic plus the appcast generator test).
+8. Options → Split large folders (Pages): a large album shows numbered sub-folders; open one and confirm photos download.
+9. Options → Group by Year & month: the same album shows year/month folders.
+10. Options → Free up space: after downloading a few originals, confirm they revert to placeholders.
+11. Lock then unlock the screen, then browse again with no auth error.
+12. CI is green on the commit (pure logic plus the appcast generator test).
 
 ## Security usage note
+
+**Plain-HTTP servers expose your API key.** Findich allows cleartext connections so it can reach self-hosted servers without TLS (LAN IPs, Tailscale, reverse proxies). If your server URL is `http://` rather than `https://`, your Immich API key is sent unencrypted on every request, so anyone who can observe the network between you and the server can capture it (and that key grants full access to your library). On an untrusted network, use an `https://` URL or a tunnel such as Tailscale that encrypts the transport.
 
 As with any software, there may still be bugs, edge-case errors, or incomplete hardening details. We aim to keep behavior safe, stable, and security-aware, but no software is perfect. We used AI models as a drafting and review aid during implementation.
 
