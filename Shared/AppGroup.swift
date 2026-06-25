@@ -15,6 +15,9 @@ enum AppGroup {
     enum DefaultsKey {
         static let baseURL = "immich.baseURL"
         static let visibleSections = "immich.visibleSections"
+        static let chunkingEnabled = "immich.chunkingEnabled"
+        static let chunkSize = "immich.chunkSize"
+        static let chunkStrategy = "immich.chunkStrategy"
     }
 
     static var defaults: UserDefaults? {
