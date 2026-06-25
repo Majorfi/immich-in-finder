@@ -1,11 +1,14 @@
 import SwiftUI
-import AppKit
 
 struct ContentView: View {
     @State private var baseURL = ""
     @State private var apiKey = ""
     @State private var showKey = false
     @State private var visibleSections: Set<SectionKind> = Set(SectionKind.allCases)
+    @State private var chunking = ChunkingSettings.default
+    @State private var isFreeingSpace = false
+    @State private var freedMessage: String?
+    @State private var selectedTab: AppTab = .setup
     @State private var status: Status = .idle
     @State private var isWorking = false
     @State private var isEnabled = false
@@ -19,13 +22,31 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
-            form
+            TabStrip(selection: $selectedTab)
+            Group {
+                switch selectedTab {
+                case .setup:
+                    form
+                case .options:
+                    optionsTab
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             Divider()
             footer
         }
         .frame(width: 480, height: 640)
         .task { await loadState() }
+    }
+
+    private var optionsTab: some View {
+        OptionsTab(
+            chunking: $chunking,
+            isEnabled: isEnabled,
+            isFreeingSpace: isFreeingSpace,
+            freedMessage: freedMessage,
+            onFreeUpSpace: { Task { await freeUpSpace() } }
+        )
     }
 
     // MARK: - Header
@@ -93,16 +114,6 @@ struct ContentView: View {
                         }
                         .textFieldStyle(.plain)
                         .autocorrectionDisabled()
-
-                        Button {
-                            guard let pasted = NSPasteboard.general.string(forType: .string) else { return }
-                            apiKey = pasted.trimmingCharacters(in: .whitespacesAndNewlines)
-                        } label: {
-                            Image(systemName: "doc.on.clipboard")
-                        }
-                        .buttonStyle(.borderless)
-                        .foregroundStyle(.secondary)
-                        .help("Paste API key")
 
                         let keyIcon: String = if showKey { "eye.slash.fill" } else { "eye.fill" }
                         let keyHelp: String = if showKey { "Hide key" } else { "Show key" }
@@ -225,6 +236,7 @@ struct ContentView: View {
             apiKey = credentials.apiKey
         }
         visibleSections = VisibleSections.load()
+        chunking = ChunkingSettings.load()
         isEnabled = await DomainManager.isRegistered()
     }
 
@@ -247,6 +259,7 @@ struct ContentView: View {
         let previous = CredentialStore.load()
         CredentialStore.save(baseURL: baseURL, apiKey: apiKey)
         VisibleSections.save(visibleSections)
+        ChunkingSettings.save(chunking)
         let credentialsChanged = previous?.apiKey != apiKey || previous?.baseURL.absoluteString != baseURL
         do {
             if isEnabled && credentialsChanged {
@@ -273,5 +286,12 @@ struct ContentView: View {
         } catch {
             status = .failure("Couldn’t remove the Finder location.")
         }
+    }
+
+    private func freeUpSpace() async {
+        isFreeingSpace = true
+        defer { isFreeingSpace = false }
+        let count = await SpaceManager.freeUpSpace()
+        freedMessage = "Reverted \(count) downloaded files to placeholders."
     }
 }
