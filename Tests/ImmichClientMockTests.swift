@@ -179,6 +179,38 @@ final class ImmichClientMockTests: XCTestCase {
         XCTAssertEqual(client.baseURL.absoluteString, "https://mock.test")
     }
 
+    // Custom headers (e.g. a Cloudflare Access service token) are attached to
+    // every outgoing request, which is what lets a server behind an auth proxy be
+    // reached at all.
+    func testCustomHeadersAreSentOnEveryRequest() async throws {
+        let log = RequestLog()
+        let client = headerCapturingClient(customHeaders: ["CF-Access-Client-Id": "tok"], log: log)
+        _ = try await client.listAlbums()
+        XCTAssertEqual(log.requests.first?.value(forHTTPHeaderField: "CF-Access-Client-Id"), "tok")
+    }
+
+    // A header row named like the API-key header cannot shadow the real key: the
+    // real x-api-key is set after the custom headers, so it always wins.
+    func testCustomHeaderCannotShadowAPIKey() async throws {
+        let log = RequestLog()
+        let client = headerCapturingClient(apiKey: "real-key", customHeaders: ["x-api-key": "evil"], log: log)
+        _ = try await client.listAlbums()
+        XCTAssertEqual(log.requests.first?.value(forHTTPHeaderField: "x-api-key"), "real-key")
+    }
+
+    // An ImmichClient whose requests are recorded into `log`, so a test can assert
+    // on the headers that actually went out.
+    private func headerCapturingClient(apiKey: String = "k", customHeaders: [String: String], log: RequestLog) -> ImmichClient {
+        MockURLProtocol.handler = { request in
+            log.record(request)
+            return (200, Data("[]".utf8))
+        }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: config)
+        return ImmichClient(baseURL: URL(string: "https://mock.test")!, apiKey: apiKey, customHeaders: customHeaders, session: session)
+    }
+
     func testDownloadReturnsRawBytes() async throws {
         let client = MockClient.make { _ in (200, Data([0xFF, 0xD8, 0xFF])) }
         let original = try await client.downloadOriginal(assetID: "x")

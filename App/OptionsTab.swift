@@ -5,6 +5,7 @@ import SwiftUI
 // values save alongside the rest of the settings when the domain is enabled.
 struct OptionsTab: View {
     @Binding var chunking: ChunkingSettings
+    @Binding var customHeaders: [CustomHeader]
     let isEnabled: Bool
     let isFreeingSpace: Bool
     let freedMessage: String?
@@ -13,9 +14,49 @@ struct OptionsTab: View {
     var body: some View {
         Form {
             largeFolders
+            customHeadersSection
             storage
         }
         .formStyle(.grouped)
+    }
+
+    private var customHeadersSection: some View {
+        Section {
+            ForEach($customHeaders, id: \.rowID) { $header in
+                LabeledContent {
+                    Button {
+                        customHeaders.removeAll { $0.rowID == header.rowID }
+                    } label: {
+                        Image(systemName: "minus.circle.fill")
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.secondary)
+                    .help("Remove header")
+                    .accessibilityLabel("Remove header")
+                } label: {
+                    HStack(spacing: 8) {
+                        TextField("", text: $header.name, prompt: Text("CF-Access-Client-Id"))
+                            .textFieldStyle(.roundedBorder)
+                            .autocorrectionDisabled()
+                            .accessibilityLabel("Header name")
+                        SecureField("", text: $header.value, prompt: Text("Value"))
+                            .textFieldStyle(.roundedBorder)
+                            .autocorrectionDisabled()
+                            .accessibilityLabel("Header value")
+                    }
+                }
+            }
+            Button {
+                customHeaders.append(CustomHeader(name: "", value: ""))
+            } label: {
+                Label("Add header", systemImage: "plus.circle.fill")
+            }
+            .buttonStyle(.borderless)
+        } header: {
+            Text("Custom request headers")
+        } footer: {
+            Text("Sent on every request, for a server behind an auth proxy. For Cloudflare Access, add CF-Access-Client-Id and CF-Access-Client-Secret from a service token.")
+        }
     }
 
     private var largeFolders: some View {

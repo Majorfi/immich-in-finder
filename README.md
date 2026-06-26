@@ -42,6 +42,10 @@ Why pay-what-you-want? Shipping a Mac app outside the App Store needs an Apple D
 
 Note: photos Immich indexes from an **external library** are read-only. Findich browses and downloads them like any other asset, but it can't write them back; Immich owns those files and refreshes them from the source itself. Findich doesn't single them out in Finder yet, so a delete or move you try there just won't take.
 
+## Servers behind an auth proxy
+
+If your Immich server sits behind an authenticating reverse proxy (Cloudflare Access, basic-auth, a WAF), add the headers it expects under **Options → Custom request headers** (a shortcut link sits in the Setup tab); they ride along on every request, the same as Immich's own "custom proxy headers". For a Cloudflare Access service token, add `CF-Access-Client-Id` and `CF-Access-Client-Secret`. Those values can be bearer tokens, so they're stored in the Keychain alongside the API key, not in the App Group preferences.
+
 ## Requirements
 
 - macOS 13 or later
@@ -159,6 +163,7 @@ The extension's `Info.plist` **must** include `NSExtensionFileProviderDocumentGr
 - [x] `Favorites/` view: favorited assets, flat (`isFavorite`)
 - [x] Options tab: split large folders into pages or year/month groups
 - [x] Free up space: evict downloaded originals back to placeholders
+- [x] Custom request headers: reach a server behind Cloudflare Access / an auth proxy
 - [ ] Full two-way sync: pull remote changes via `enumerateChanges` + sync anchors
 
 ## Releasing

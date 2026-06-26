@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @State private var baseURL = ""
     @State private var apiKey = ""
+    @State private var customHeaders: [CustomHeader] = []
     @State private var showKey = false
     @State private var visibleSections: Set<SectionKind> = Set(SectionKind.allCases)
     @State private var chunking = ChunkingSettings.default
@@ -42,6 +43,7 @@ struct ContentView: View {
     private var optionsTab: some View {
         OptionsTab(
             chunking: $chunking,
+            customHeaders: $customHeaders,
             isEnabled: isEnabled,
             isFreeingSpace: isFreeingSpace,
             freedMessage: freedMessage,
@@ -128,6 +130,15 @@ struct ContentView: View {
                     }
                 } label: {
                     Label("API Key", systemImage: "key.fill")
+                }
+
+                HStack {
+                    Spacer()
+                    Button("Add custom headers") {
+                        selectedTab = .options
+                    }
+                    .buttonStyle(.link)
+                    .font(.callout)
                 }
             }
 
@@ -234,6 +245,7 @@ struct ContentView: View {
         if let credentials = CredentialStore.load() {
             baseURL = credentials.baseURL.absoluteString
             apiKey = credentials.apiKey
+            customHeaders = credentials.customHeaders
         }
         visibleSections = VisibleSections.load()
         chunking = ChunkingSettings.load()
@@ -250,18 +262,27 @@ struct ContentView: View {
         }
         let albumCount: Int
         do {
-            albumCount = try await ImmichClient(baseURL: url, apiKey: apiKey).listAlbums().count
+            albumCount = try await ImmichClient(baseURL: url, apiKey: apiKey, customHeaders: customHeaders.asRequestHeaders).listAlbums().count
         } catch {
             status = .failure("Couldn’t connect. Check the address and API key.")
             return
         }
 
+        customHeaders = customHeaders.compactMap { header in
+            let name = header.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if name.isEmpty {
+                return nil
+            }
+            return CustomHeader(name: name, value: header.value.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
         let previous = CredentialStore.load()
-        CredentialStore.save(baseURL: baseURL, apiKey: apiKey)
+        CredentialStore.save(baseURL: baseURL, apiKey: apiKey, customHeaders: customHeaders)
         VisibleSections.save(visibleSections)
         chunking = chunking.clampedToValidSize()
         ChunkingSettings.save(chunking)
-        let credentialsChanged = previous?.apiKey != apiKey || previous?.baseURL.absoluteString != baseURL
+        let credentialsChanged = previous?.apiKey != apiKey
+            || previous?.baseURL.absoluteString != baseURL
+            || previous?.customHeaders != customHeaders
         do {
             if isEnabled && credentialsChanged {
                 try await DomainManager.reload()
