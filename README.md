@@ -44,7 +44,7 @@ Note: photos Immich indexes from an **external library** are read-only. Findich 
 
 ## Servers behind an auth proxy
 
-If your Immich server sits behind an authenticating reverse proxy (Cloudflare Access, basic-auth, a WAF), add the headers it expects under **Setup → Custom request headers**; they ride along on every request, the same as Immich's own "custom proxy headers". For a Cloudflare Access service token, add `CF-Access-Client-Id` and `CF-Access-Client-Secret`. Those values can be bearer tokens, so they're stored in the Keychain alongside the API key, not in the App Group preferences.
+If your Immich server sits behind an authenticating reverse proxy (Cloudflare Access, basic-auth, a WAF), add the headers it expects under **Options → Custom request headers** (a shortcut link sits in the Setup tab); they ride along on every request, the same as Immich's own "custom proxy headers". For a Cloudflare Access service token, add `CF-Access-Client-Id` and `CF-Access-Client-Secret`. Those values can be bearer tokens, so they're stored in the Keychain alongside the API key, not in the App Group preferences.
 
 ## Requirements
 
