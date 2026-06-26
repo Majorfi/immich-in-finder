@@ -284,7 +284,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
     private let domain: NSFileProviderDomain
 
     required convenience init(domain: NSFileProviderDomain) {
-        let client = CredentialStore.load().map { ImmichClient(baseURL: $0.baseURL, apiKey: $0.apiKey) }
+        let client = CredentialStore.load().map { ImmichClient(baseURL: $0.baseURL, apiKey: $0.apiKey, customHeaders: $0.customHeaders.asRequestHeaders) }
         self.init(domain: domain, client: client, cache: client.map(ImmichCache.init(client:)))
         fileProviderLog.log("init, credentials present: \(client != nil, privacy: .public)")
     }

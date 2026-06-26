@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @State private var baseURL = ""
     @State private var apiKey = ""
+    @State private var customHeaders: [CustomHeader] = []
     @State private var showKey = false
     @State private var visibleSections: Set<SectionKind> = Set(SectionKind.allCases)
     @State private var chunking = ChunkingSettings.default
@@ -132,6 +133,38 @@ struct ContentView: View {
             }
 
             Section {
+                ForEach($customHeaders, id: \.rowID) { $header in
+                    HStack(spacing: 8) {
+                        TextField("", text: $header.name, prompt: Text("CF-Access-Client-Id"))
+                            .textFieldStyle(.plain)
+                            .autocorrectionDisabled()
+                        Divider().frame(height: 16)
+                        SecureField("", text: $header.value, prompt: Text("Value"))
+                            .textFieldStyle(.plain)
+                            .autocorrectionDisabled()
+                        Button {
+                            customHeaders.removeAll { $0.rowID == header.rowID }
+                        } label: {
+                            Image(systemName: "minus.circle.fill")
+                        }
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(.secondary)
+                        .help("Remove header")
+                    }
+                }
+                Button {
+                    customHeaders.append(CustomHeader(name: "", value: ""))
+                } label: {
+                    Label("Add header", systemImage: "plus.circle.fill")
+                }
+                .buttonStyle(.borderless)
+            } header: {
+                Text("Custom request headers")
+            } footer: {
+                Text("Sent on every request, for a server behind an auth proxy. For Cloudflare Access, add CF-Access-Client-Id and CF-Access-Client-Secret from a service token.")
+            }
+
+            Section {
                 ForEach(SectionKind.allCases, id: \.self) { kind in
                     Toggle(isOn: binding(for: kind)) {
                         Label {
@@ -234,6 +267,7 @@ struct ContentView: View {
         if let credentials = CredentialStore.load() {
             baseURL = credentials.baseURL.absoluteString
             apiKey = credentials.apiKey
+            customHeaders = credentials.customHeaders
         }
         visibleSections = VisibleSections.load()
         chunking = ChunkingSettings.load()
@@ -250,18 +284,20 @@ struct ContentView: View {
         }
         let albumCount: Int
         do {
-            albumCount = try await ImmichClient(baseURL: url, apiKey: apiKey).listAlbums().count
+            albumCount = try await ImmichClient(baseURL: url, apiKey: apiKey, customHeaders: customHeaders.asRequestHeaders).listAlbums().count
         } catch {
             status = .failure("Couldn’t connect. Check the address and API key.")
             return
         }
 
         let previous = CredentialStore.load()
-        CredentialStore.save(baseURL: baseURL, apiKey: apiKey)
+        CredentialStore.save(baseURL: baseURL, apiKey: apiKey, customHeaders: customHeaders)
         VisibleSections.save(visibleSections)
         chunking = chunking.clampedToValidSize()
         ChunkingSettings.save(chunking)
-        let credentialsChanged = previous?.apiKey != apiKey || previous?.baseURL.absoluteString != baseURL
+        let credentialsChanged = previous?.apiKey != apiKey
+            || previous?.baseURL.absoluteString != baseURL
+            || previous?.customHeaders != customHeaders
         do {
             if isEnabled && credentialsChanged {
                 try await DomainManager.reload()
