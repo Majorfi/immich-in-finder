@@ -48,15 +48,20 @@ enum AssetSearch: Sendable {
 struct ImmichClient: Sendable {
     let baseURL: URL
     let apiKey: String
+    // Extra request headers (e.g. Cloudflare Access service-token headers) sent on
+    // every call so a server behind an auth reverse proxy is reachable. Empty for
+    // a directly-reachable server.
+    let customHeaders: [String: String]
     private let session: URLSession
 
     // session is injectable so tests can drive a mocked URLProtocol; production
     // callers get the shared session.
-    init(baseURL: URL, apiKey: String, session: URLSession = .shared) {
+    init(baseURL: URL, apiKey: String, customHeaders: [String: String] = [:], session: URLSession = .shared) {
         var normalized = baseURL.absoluteString
         while normalized.hasSuffix("/") { normalized.removeLast() }
         self.baseURL = URL(string: normalized) ?? baseURL
         self.apiKey = apiKey
+        self.customHeaders = customHeaders
         self.session = session
     }
 
@@ -364,6 +369,11 @@ struct ImmichClient: Sendable {
             throw ImmichError.badURL(baseURL.absoluteString + path)
         }
         var request = URLRequest(url: url)
+        // User headers first, then x-api-key, so a header row can never shadow the
+        // real API key (the per-call Accept/Content-Type are set after this too).
+        for (field, value) in customHeaders {
+            request.setValue(value, forHTTPHeaderField: field)
+        }
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         return request
     }
