@@ -61,13 +61,50 @@ final class CredentialStoreTests: XCTestCase {
     func testLoadReturnsNilWhenBaseURLIsInvalid() {
         // An empty string is not a valid URL, so URL(string:) returns nil and
         // load() bails even though a key is present in the keychain.
+        store.save(baseURL: "https://immich.example.com", apiKey: "secret-key")
         defaults.set("", forKey: AppGroup.DefaultsKey.baseURL)
-        store.keychain.save("secret-key")
         XCTAssertNil(store.load())
     }
 
     func testLoadReturnsNilWhenBaseURLMissingButKeyPresent() {
-        store.keychain.save("secret-key")
+        store.save(baseURL: "https://immich.example.com", apiKey: "secret-key")
+        defaults.removeObject(forKey: AppGroup.DefaultsKey.baseURL)
         XCTAssertNil(store.load())
+    }
+
+    // MARK: custom headers
+
+    func testCustomHeadersRoundTrip() {
+        let headers = [
+            CustomHeader(name: "CF-Access-Client-Id", value: "id"),
+            CustomHeader(name: "CF-Access-Client-Secret", value: "secret")
+        ]
+        store.save(baseURL: "https://immich.example.com", apiKey: "k", customHeaders: headers)
+        XCTAssertEqual(store.load()?.customHeaders, headers)
+    }
+
+    func testNoCustomHeadersLoadsAsEmpty() {
+        store.save(baseURL: "https://immich.example.com", apiKey: "k")
+        XCTAssertEqual(store.load()?.customHeaders, [])
+    }
+
+    // Saving an empty set clears a previously-stored header item rather than
+    // leaving stale headers behind.
+    func testSavingEmptyHeadersClearsPreviousHeaders() {
+        store.save(baseURL: "https://immich.example.com", apiKey: "k", customHeaders: [CustomHeader(name: "X", value: "1")])
+        XCTAssertEqual(store.load()?.customHeaders.count, 1)
+
+        store.save(baseURL: "https://immich.example.com", apiKey: "k", customHeaders: [])
+        XCTAssertEqual(store.load()?.customHeaders, [])
+    }
+
+    // clear() must remove the header item too, so a later save with no headers
+    // doesn't resurrect the old ones.
+    func testClearRemovesCustomHeaders() {
+        store.save(baseURL: "https://immich.example.com", apiKey: "k", customHeaders: [CustomHeader(name: "X", value: "1")])
+        store.clear()
+
+        store.save(baseURL: "https://immich.example.com", apiKey: "k")
+        XCTAssertEqual(store.load()?.customHeaders, [])
     }
 }
