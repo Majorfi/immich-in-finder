@@ -183,20 +183,32 @@ final class ImmichClientMockTests: XCTestCase {
     // every outgoing request, which is what lets a server behind an auth proxy be
     // reached at all.
     func testCustomHeadersAreSentOnEveryRequest() async throws {
-        let seen = HeaderCapture()
+        let log = RequestLog()
+        let client = headerCapturingClient(customHeaders: ["CF-Access-Client-Id": "tok"], log: log)
+        _ = try await client.listAlbums()
+        XCTAssertEqual(log.requests.first?.value(forHTTPHeaderField: "CF-Access-Client-Id"), "tok")
+    }
+
+    // A header row named like the API-key header cannot shadow the real key: the
+    // real x-api-key is set after the custom headers, so it always wins.
+    func testCustomHeaderCannotShadowAPIKey() async throws {
+        let log = RequestLog()
+        let client = headerCapturingClient(apiKey: "real-key", customHeaders: ["x-api-key": "evil"], log: log)
+        _ = try await client.listAlbums()
+        XCTAssertEqual(log.requests.first?.value(forHTTPHeaderField: "x-api-key"), "real-key")
+    }
+
+    // An ImmichClient whose requests are recorded into `log`, so a test can assert
+    // on the headers that actually went out.
+    private func headerCapturingClient(apiKey: String = "k", customHeaders: [String: String], log: RequestLog) -> ImmichClient {
         MockURLProtocol.handler = { request in
-            seen.record(request.value(forHTTPHeaderField: "CF-Access-Client-Id"))
+            log.record(request)
             return (200, Data("[]".utf8))
         }
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [MockURLProtocol.self]
         let session = URLSession(configuration: config)
-        let client = ImmichClient(
-            baseURL: URL(string: "https://mock.test")!, apiKey: "k",
-            customHeaders: ["CF-Access-Client-Id": "tok"], session: session
-        )
-        _ = try await client.listAlbums()
-        XCTAssertEqual(seen.value, "tok")
+        return ImmichClient(baseURL: URL(string: "https://mock.test")!, apiKey: apiKey, customHeaders: customHeaders, session: session)
     }
 
     func testDownloadReturnsRawBytes() async throws {
@@ -241,21 +253,6 @@ final class ImmichClientMockTests: XCTestCase {
     func testNonEmptyYearsThrowsOnError() async {
         let client = MockClient.make { _ in (500, Data("{}".utf8)) }
         await XCTAssertThrowsErrorAsync(try await client.nonEmptyYears())
-    }
-}
-
-// Captures a single header value seen by the mock handler, lock-guarded so it
-// stays Sendable under Swift 6 strict concurrency.
-final class HeaderCapture: @unchecked Sendable {
-    private var stored: String?
-    private let lock = NSLock()
-    func record(_ value: String?) {
-        lock.lock(); defer { lock.unlock() }
-        stored = value
-    }
-    var value: String? {
-        lock.lock(); defer { lock.unlock() }
-        return stored
     }
 }
 

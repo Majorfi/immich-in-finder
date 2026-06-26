@@ -29,16 +29,19 @@ final class MockURLProtocol: URLProtocol {
     }
 }
 
-// Records "METHOD path" for each intercepted request so tests can assert which
-// endpoints were actually hit.
+// Records each intercepted request: a "METHOD path" string so tests can assert
+// which endpoints were hit, and the request itself for header/body assertions.
 final class RequestLog: @unchecked Sendable {
     private var entries: [String] = []
+    private var captured: [URLRequest] = []
     private let lock = NSLock()
     func record(_ request: URLRequest) {
         lock.lock(); defer { lock.unlock() }
         entries.append("\(request.httpMethod ?? "?") \(request.url?.path ?? "?")")
+        captured.append(request)
     }
     var all: [String] { lock.lock(); defer { lock.unlock() }; return entries }
+    var requests: [URLRequest] { lock.lock(); defer { lock.unlock() }; return captured }
     func contains(_ entry: String) -> Bool { all.contains(entry) }
 }
 
