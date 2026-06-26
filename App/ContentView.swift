@@ -43,6 +43,7 @@ struct ContentView: View {
     private var optionsTab: some View {
         OptionsTab(
             chunking: $chunking,
+            customHeaders: $customHeaders,
             isEnabled: isEnabled,
             isFreeingSpace: isFreeingSpace,
             freedMessage: freedMessage,
@@ -130,38 +131,15 @@ struct ContentView: View {
                 } label: {
                     Label("API Key", systemImage: "key.fill")
                 }
-            }
 
-            Section {
-                ForEach($customHeaders, id: \.rowID) { $header in
-                    HStack(spacing: 8) {
-                        TextField("", text: $header.name, prompt: Text("CF-Access-Client-Id"))
-                            .textFieldStyle(.plain)
-                            .autocorrectionDisabled()
-                        Divider().frame(height: 16)
-                        SecureField("", text: $header.value, prompt: Text("Value"))
-                            .textFieldStyle(.plain)
-                            .autocorrectionDisabled()
-                        Button {
-                            customHeaders.removeAll { $0.rowID == header.rowID }
-                        } label: {
-                            Image(systemName: "minus.circle.fill")
-                        }
-                        .buttonStyle(.borderless)
-                        .foregroundStyle(.secondary)
-                        .help("Remove header")
+                HStack {
+                    Spacer()
+                    Button("Add custom headers") {
+                        selectedTab = .options
                     }
+                    .buttonStyle(.link)
+                    .font(.callout)
                 }
-                Button {
-                    customHeaders.append(CustomHeader(name: "", value: ""))
-                } label: {
-                    Label("Add header", systemImage: "plus.circle.fill")
-                }
-                .buttonStyle(.borderless)
-            } header: {
-                Text("Custom request headers")
-            } footer: {
-                Text("Sent on every request, for a server behind an auth proxy. For Cloudflare Access, add CF-Access-Client-Id and CF-Access-Client-Secret from a service token.")
             }
 
             Section {
@@ -290,6 +268,7 @@ struct ContentView: View {
             return
         }
 
+        customHeaders = customHeaders.filter { $0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
         let previous = CredentialStore.load()
         CredentialStore.save(baseURL: baseURL, apiKey: apiKey, customHeaders: customHeaders)
         VisibleSections.save(visibleSections)
