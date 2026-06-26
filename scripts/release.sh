@@ -75,5 +75,33 @@ $CHANGELOG"
     SIG_AND_LEN=$("$SIGN_UPDATE" "$DMG")
     DMG_URL="https://github.com/Majorfi/immich-in-finder/releases/download/v$VERSION/$APP_NAME.dmg"
     python3 scripts/update_appcast.py site/public/appcast.xml "$VERSION" "$DMG_URL" "$SIG_AND_LEN" "$CHANGELOG"
-    echo "Updated site/public/appcast.xml. Commit and push site/ to publish the update."
+
+    # Publish the appcast so installed copies can auto-update; it is served from
+    # findich.app/appcast.xml, so committing and pushing site/ deploys it.
+    if ! git diff --quiet -- site/public/appcast.xml; then
+        git add site/public/appcast.xml
+        git commit -m "chore(site): publish $VERSION appcast"
+        git push
+        echo "Committed and pushed the appcast."
+    fi
+
+    # Bump the Homebrew cask with the sha of the DMG we just built and uploaded
+    # (same artifact, no re-download). TAP_DIR defaults to a sibling clone of the
+    # tap repo; override it if yours lives elsewhere. Skipped if the cask is absent.
+    REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+    TAP_DIR="${TAP_DIR:-$REPO_ROOT/../homebrew-tap}"
+    CASK="$TAP_DIR/Casks/$(echo "$APP_NAME" | tr '[:upper:]' '[:lower:]').rb"
+    if [ -f "$CASK" ]; then
+        SHA=$(shasum -a 256 "$DMG" | awk '{print $1}')
+        sed -i '' -E "s/version \"[^\"]+\"/version \"$VERSION\"/; s/sha256 \"[^\"]+\"/sha256 \"$SHA\"/" "$CASK"
+        if git -C "$TAP_DIR" diff --quiet -- "$CASK"; then
+            echo "Cask already at $VERSION; nothing to push."
+        else
+            git -C "$TAP_DIR" commit -m "findich $VERSION" -- "$CASK"
+            git -C "$TAP_DIR" push
+            echo "Bumped and pushed the Homebrew cask ($VERSION)."
+        fi
+    else
+        echo "Cask not found at $CASK; skipping the Homebrew bump (set TAP_DIR?)." >&2
+    fi
 fi
