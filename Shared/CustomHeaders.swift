@@ -24,14 +24,22 @@ struct CustomHeader: Codable, Equatable, Sendable {
 extension Sequence where Element == CustomHeader {
     // Collapses the editable rows into the [field: value] map applied to each
     // request, dropping rows whose trimmed name is empty and trimming the
-    // surrounding whitespace a paste tends to carry. A later row with the same
-    // name wins.
+    // surrounding whitespace a paste tends to carry. HTTP header names are
+    // case-insensitive, so rows whose names differ only by case are the same
+    // header: the last-entered row wins, and its exact casing is what is sent.
     var asRequestHeaders: [String: String] {
         var headers: [String: String] = [:]
         for header in self {
             let name = header.name.trimmingCharacters(in: .whitespacesAndNewlines)
             if name.isEmpty {
                 continue
+            }
+            // Drop any prior entry that differs only by case, so the collapse is
+            // deterministic: a Dictionary's iteration order is not guaranteed, and
+            // request.setValue is itself case-insensitive, so two surviving keys
+            // would otherwise race in makeRequest.
+            for existing in headers.keys where existing.caseInsensitiveCompare(name) == .orderedSame {
+                headers[existing] = nil
             }
             headers[name] = header.value.trimmingCharacters(in: .whitespacesAndNewlines)
         }

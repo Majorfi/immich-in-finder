@@ -32,14 +32,17 @@ struct OptionsTab: View {
                     .buttonStyle(.borderless)
                     .foregroundStyle(.secondary)
                     .help("Remove header")
+                    .accessibilityLabel("Remove header")
                 } label: {
                     HStack(spacing: 8) {
                         TextField("", text: $header.name, prompt: Text("CF-Access-Client-Id"))
                             .textFieldStyle(.roundedBorder)
                             .autocorrectionDisabled()
+                            .accessibilityLabel("Header name")
                         SecureField("", text: $header.value, prompt: Text("Value"))
                             .textFieldStyle(.roundedBorder)
                             .autocorrectionDisabled()
+                            .accessibilityLabel("Header value")
                     }
                 }
             }

@@ -268,7 +268,13 @@ struct ContentView: View {
             return
         }
 
-        customHeaders = customHeaders.filter { $0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
+        customHeaders = customHeaders.compactMap { header in
+            let name = header.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if name.isEmpty {
+                return nil
+            }
+            return CustomHeader(name: name, value: header.value.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
         let previous = CredentialStore.load()
         CredentialStore.save(baseURL: baseURL, apiKey: apiKey, customHeaders: customHeaders)
         VisibleSections.save(visibleSections)
