@@ -23,7 +23,7 @@ final class ImmichClientIntegrationTests: IntegrationTestCase {
     func testAlbumPaginationMatchesCount() async throws {
         let albums = try await client.listAlbums()
         let album = try XCTUnwrap(albums.max(by: { $0.assetCount < $1.assetCount }))
-        let assets = try await client.searchAllAlbum(albumID: album.albumID)
+        let assets = try await client.searchAllViaPage(for: .album(id: album.albumID), size: 1000)
         XCTAssertEqual(assets.count, album.assetCount)
         if let first = assets.first {
             XCTAssertNotNil(first.exifInfo?.fileSizeInByte, "withExif should populate file size")
@@ -78,7 +78,7 @@ final class ImmichClientIntegrationTests: IntegrationTestCase {
     func testDownloadOriginalAndThumbnail() async throws {
         let albums = try await client.listAlbums()
         let album = try XCTUnwrap(albums.first(where: { $0.assetCount > 0 }))
-        let assets = try await client.searchAllAlbum(albumID: album.albumID)
+        let assets = try await client.searchAllViaPage(for: .album(id: album.albumID), size: 1000)
         let asset = try XCTUnwrap(assets.first)
         let original = try await client.downloadOriginal(assetID: asset.assetID)
         XCTAssertGreaterThan(original.count, 0)

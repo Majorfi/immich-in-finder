@@ -33,9 +33,8 @@ struct SearchPage: Sendable {
 // Every asset container, keyed for paged /search/metadata streaming. All six
 // locations (albums included) enumerate and resolve through the same paged
 // /search/metadata path, so listing and single-asset resolution stay consistent.
-// One consequence: /search/metadata applies the default visibility filter, so an
-// album made of archived assets lists and resolves empty (the unpaged album
-// endpoint that includes archived now backs only the integration tests).
+// On Immich v3 an omitted visibility filter returns every visibility except
+// locked, so an album that includes archived assets enumerates in full.
 enum AssetSearch: Sendable {
     case album(id: String)
     case month(yearMonth: String)
@@ -105,8 +104,6 @@ struct ImmichClient: Sendable {
         try await Self.writeMultipartEnvelope(
             to: envelope, boundary: boundary, filename: filename, source: fileURL,
             fields: [
-                ("deviceAssetId", "immich-in-finder-\(UUID().uuidString)"),
-                ("deviceId", "immich-in-finder"),
                 ("fileCreatedAt", createdAt),
                 ("fileModifiedAt", modifiedAt),
             ]
@@ -228,7 +225,8 @@ struct ImmichClient: Sendable {
 
     // Total number of assets a location holds, from POST /api/search/statistics.
     // Mirrors the searchPage filter mapping so the count matches exactly what
-    // enumeration would page through (same visibility filter, archived excluded).
+    // enumeration would page through: both omit any visibility filter, so on v3
+    // both cover every visibility except locked.
     // Used to decide how many chunk folders a large container splits into.
     func searchStatistics(for location: AssetSearch) async throws -> Int {
         let request: StatisticsSearchRequest
@@ -265,14 +263,6 @@ struct ImmichClient: Sendable {
             page += 1
         }
         return all
-    }
-
-    // Album membership comes from the album endpoint, not /search/metadata: the
-    // latter applies the default visibility filter and drops archived assets, so
-    // an album of archived photos would enumerate empty.
-    func searchAllAlbum(albumID: String) async throws -> [Asset] {
-        let detail: AlbumDetail = try await getJSON(path: "/api/albums/\(pathSegment(albumID))")
-        return detail.assets
     }
 
     func listTags() async throws -> [TagSummary] {
