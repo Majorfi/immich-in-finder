@@ -58,14 +58,14 @@ final class ImmichClientWriteIntegrationTests: IntegrationTestCase {
         XCTAssertFalse(upload.isDuplicate)
 
         try await client.addAssets(albumID: albumA.albumID, assetIDs: [upload.ID])
-        let inA = try await client.searchAllAlbum(albumID: albumA.albumID)
+        let inA = try await client.searchAllViaPage(for: .album(id: albumA.albumID), size: 1000)
         XCTAssertTrue(inA.contains { $0.assetID == upload.ID }, "uploaded asset should be in album A")
 
         // Move A -> B (add to dest, remove from source).
         try await client.addAssets(albumID: albumB.albumID, assetIDs: [upload.ID])
         try await client.removeAssets(albumID: albumA.albumID, assetIDs: [upload.ID])
-        let aAfter = try await client.searchAllAlbum(albumID: albumA.albumID)
-        let bAfter = try await client.searchAllAlbum(albumID: albumB.albumID)
+        let aAfter = try await client.searchAllViaPage(for: .album(id: albumA.albumID), size: 1000)
+        let bAfter = try await client.searchAllViaPage(for: .album(id: albumB.albumID), size: 1000)
         XCTAssertFalse(aAfter.contains { $0.assetID == upload.ID }, "asset should be gone from A")
         XCTAssertTrue(bAfter.contains { $0.assetID == upload.ID }, "asset should be present in B")
 
@@ -75,7 +75,7 @@ final class ImmichClientWriteIntegrationTests: IntegrationTestCase {
 
         // Trash = recoverable delete; the asset leaves every album view.
         try await client.trashAssets(assetIDs: [upload.ID])
-        let bAfterTrash = try await client.searchAllAlbum(albumID: albumB.albumID)
+        let bAfterTrash = try await client.searchAllViaPage(for: .album(id: albumB.albumID), size: 1000)
         XCTAssertFalse(bAfterTrash.contains { $0.assetID == upload.ID }, "trashed asset should leave the album")
     }
 
