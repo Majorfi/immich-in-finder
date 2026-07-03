@@ -225,7 +225,8 @@ struct ImmichClient: Sendable {
 
     // Total number of assets a location holds, from POST /api/search/statistics.
     // Mirrors the searchPage filter mapping so the count matches exactly what
-    // enumeration would page through (same visibility filter, archived excluded).
+    // enumeration would page through: both omit any visibility filter, so on v3
+    // both cover every visibility except locked.
     // Used to decide how many chunk folders a large container splits into.
     func searchStatistics(for location: AssetSearch) async throws -> Int {
         let request: StatisticsSearchRequest
