@@ -51,7 +51,7 @@ If your Immich server sits behind an authenticating reverse proxy (Cloudflare Ac
 - macOS 13 or later
 - Xcode (developed with 26.5)
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen): the `.xcodeproj` is generated from `project.yml`, not committed
-- A running Immich server and an API key (Immich → _Account Settings → API Keys_)
+- A running Immich **v3 or later** server and an API key (Immich → _Account Settings → API Keys_). For Immich v2, use Findich 1.4.0 or earlier.
 - An Apple Developer team (File Provider extensions require real signing; see [Signing](#signing))
 
 ## Setup
