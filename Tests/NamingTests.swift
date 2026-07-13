@@ -24,7 +24,7 @@ final class NamingTests: XCTestCase {
 
     func testImmichItemsDisambiguateColliding() {
         func asset(_ id: String, _ name: String) -> Asset {
-            Asset(assetID: id, type: .image, originalFileName: name, checksum: nil,
+            Asset(assetID: id, type: .image, originalFileName: name, originalPath: nil, checksum: nil,
                   fileCreatedAt: "2024-01-01T00:00:00.000Z", fileModifiedAt: nil, exifInfo: nil)
         }
         let items = immichItems(from: [asset("aaaaaaaa1", "x.jpg"), asset("bbbbbbbb2", "x.jpg")],

@@ -5,6 +5,7 @@ import SwiftUI
 // values save alongside the rest of the settings when the domain is enabled.
 struct OptionsTab: View {
     @Binding var chunking: ChunkingSettings
+    @Binding var filenameSource: FilenameSource
     @Binding var customHeaders: [CustomHeader]
     let isEnabled: Bool
     let isFreeingSpace: Bool
@@ -14,10 +15,26 @@ struct OptionsTab: View {
     var body: some View {
         Form {
             largeFolders
+            filenames
             customHeadersSection
             storage
         }
         .formStyle(.grouped)
+    }
+
+    private var filenames: some View {
+        Section {
+            Picker(selection: $filenameSource) {
+                Text("Original upload name").tag(FilenameSource.originalName)
+                Text("Storage template name").tag(FilenameSource.storagePath)
+            } label: {
+                Label("Show", systemImage: "textformat")
+            }
+        } header: {
+            Text("Filenames")
+        } footer: {
+            Text("Which name Finder shows for each photo. “Original upload name” is the one Immich kept from upload; “Storage template name” is the file’s name on the server after your Storage Template. Takes effect on the next Update.")
+        }
     }
 
     private var customHeadersSection: some View {

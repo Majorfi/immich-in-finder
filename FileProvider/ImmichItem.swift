@@ -169,9 +169,10 @@ func disambiguatedName(base: String, id: String, counts: [String: Int]) -> Strin
 // set, the items report that sub-folder as their parent instead of the container
 // itself (a page folder, or a date folder for the date strategy).
 func immichItems(from assets: [Asset], location: AssetLocation, parent: ItemID? = nil) -> [ImmichItem] {
-    let counts = nameCounts(assets.map { $0.originalFileName })
+    let source = FilenameSource.load()
+    let counts = nameCounts(assets.map { source.baseName(for: $0) })
     return assets.map {
-        ImmichItem(asset: $0, location: location, filename: disambiguatedName(base: $0.originalFileName, id: $0.assetID, counts: counts), parent: parent)
+        ImmichItem(asset: $0, location: location, filename: disambiguatedName(base: source.baseName(for: $0), id: $0.assetID, counts: counts), parent: parent)
     }
 }
 
@@ -179,8 +180,9 @@ func resolveAsset(_ assetID: String, in assets: [Asset]) -> (asset: Asset, filen
     guard let asset = assets.first(where: { $0.assetID == assetID }) else {
         return nil
     }
-    let counts = nameCounts(assets.map { $0.originalFileName })
-    let filename = disambiguatedName(base: asset.originalFileName, id: assetID, counts: counts)
+    let source = FilenameSource.load()
+    let counts = nameCounts(assets.map { source.baseName(for: $0) })
+    let filename = disambiguatedName(base: source.baseName(for: asset), id: assetID, counts: counts)
     return (asset, filename)
 }
 

@@ -34,8 +34,9 @@ Why pay-what-you-want? Shipping a Mac app outside the App Store needs an Apple D
 
 ## How it works
 
-- A small **container app** (`ImmichDrive`) registers a File Provider _domain_ and stores your server URL + API key (App Group `UserDefaults` + Keychain). Its **Options** tab controls how large folders appear and reclaims disk:
+- A small **container app** (`ImmichDrive`) registers a File Provider _domain_ and stores your server URL + API key (App Group `UserDefaults` + Keychain). Its **Options** tab controls how folders and filenames appear and reclaims disk:
   - **Split large folders**: a folder over the chosen size is shown as sub-folders so each loads on its own. _Pages_ makes numbered slices (`0001-1000`, …); _Year & month_ groups by capture date (Places and Timeline months always use pages). Takes effect on the next Update.
+  - **Filenames**: name each photo by its original upload name (the default) or by the file's name on the server, which follows your Immich Storage Template. Takes effect on the next Update.
   - **Free up space**: reverts downloaded originals back to placeholders to reclaim disk; they re-download when next opened, and files in use are kept.
 - A **File Provider extension** (`NSFileProviderReplicatedExtension`) does the real work: enumerating albums and assets, serving thumbnails, and downloading originals on demand.
 - Both talk to Immich's REST API (`/api/albums`, `/api/assets/{id}/original`, `/api/assets/{id}/thumbnail`, `/api/search/statistics`, …) using the `x-api-key` header.
@@ -164,6 +165,7 @@ The extension's `Info.plist` **must** include `NSExtensionFileProviderDocumentGr
 - [x] Options tab: split large folders into pages or year/month groups
 - [x] Free up space: evict downloaded originals back to placeholders
 - [x] Custom request headers: reach a server behind Cloudflare Access / an auth proxy
+- [x] Filename source: show the original upload name or the Immich Storage Template name
 - [ ] Full two-way sync: pull remote changes via `enumerateChanges` + sync anchors
 
 ## Releasing
