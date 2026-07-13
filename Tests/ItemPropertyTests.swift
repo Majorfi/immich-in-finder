@@ -8,7 +8,7 @@ final class ItemPropertyTests: XCTestCase {
     private func asset(id: String = "a", type: AssetType = .image, name: String = "f.jpg",
                        checksum: String? = "ck", created: String = "2024-01-01T00:00:00.000Z",
                        modified: String? = "2024-01-02T00:00:00.000Z", size: Int64? = 100) -> Asset {
-        Asset(assetID: id, type: type, originalFileName: name, checksum: checksum,
+        Asset(assetID: id, type: type, originalFileName: name, originalPath: nil, checksum: checksum,
               fileCreatedAt: created, fileModifiedAt: modified,
               exifInfo: size.map { ExifInfo(fileSizeInByte: $0, city: nil, country: nil) })
     }

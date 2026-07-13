@@ -33,6 +33,9 @@ struct Asset: Decodable, Sendable {
     let assetID: String
     let type: AssetType
     let originalFileName: String
+    // The file's path on the server, whose final component follows the library's
+    // Storage Template. Optional because a shared or partner asset may omit it.
+    let originalPath: String?
     let checksum: String?
     let fileCreatedAt: String
     let fileModifiedAt: String?
@@ -42,6 +45,7 @@ struct Asset: Decodable, Sendable {
         case assetID = "id"
         case type
         case originalFileName
+        case originalPath
         case checksum
         case fileCreatedAt
         case fileModifiedAt
