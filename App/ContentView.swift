@@ -7,6 +7,7 @@ struct ContentView: View {
     @State private var showKey = false
     @State private var visibleSections: Set<SectionKind> = Set(SectionKind.allCases)
     @State private var chunking = ChunkingSettings.default
+    @State private var filenameSource = FilenameSource.default
     @State private var isFreeingSpace = false
     @State private var freedMessage: String?
     @State private var selectedTab: AppTab = .setup
@@ -43,6 +44,7 @@ struct ContentView: View {
     private var optionsTab: some View {
         OptionsTab(
             chunking: $chunking,
+            filenameSource: $filenameSource,
             customHeaders: $customHeaders,
             isEnabled: isEnabled,
             isFreeingSpace: isFreeingSpace,
@@ -249,6 +251,7 @@ struct ContentView: View {
         }
         visibleSections = VisibleSections.load()
         chunking = ChunkingSettings.load()
+        filenameSource = FilenameSource.load()
         isEnabled = await DomainManager.isRegistered()
     }
 
@@ -280,6 +283,7 @@ struct ContentView: View {
         VisibleSections.save(visibleSections)
         chunking = chunking.clampedToValidSize()
         ChunkingSettings.save(chunking)
+        FilenameSource.save(filenameSource)
         let credentialsChanged = previous?.apiKey != apiKey
             || previous?.baseURL.absoluteString != baseURL
             || previous?.customHeaders != customHeaders
