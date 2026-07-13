@@ -18,6 +18,7 @@ enum AppGroup {
         static let chunkingEnabled = "immich.chunkingEnabled"
         static let chunkSize = "immich.chunkSize"
         static let chunkStrategy = "immich.chunkStrategy"
+        static let filenameSource = "immich.filenameSource"
     }
 
     static var defaults: UserDefaults? {
