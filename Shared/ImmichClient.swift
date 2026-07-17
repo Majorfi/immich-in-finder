@@ -183,6 +183,20 @@ struct ImmichClient: Sendable {
         _ = try await sendJSON(method: .delete, path: "/api/assets", body: TrashRequest(ids: assetIDs, force: false))
     }
 
+    // Sets an asset's capture date on Immich (not the file's EXIF), used to file a
+    // freshly uploaded asset under the Timeline month it was dropped into.
+    func updateAsset(assetID: String, dateTimeOriginal: String) async throws {
+        _ = try await sendJSON(method: .put, path: "/api/assets/\(pathSegment(assetID))", body: UpdateAssetRequest(dateTimeOriginal: dateTimeOriginal))
+    }
+
+    // Fetches one asset's current server record. Read synchronously right after an
+    // upload+date change: the asset row updates at once, while the timeline search
+    // index can lag a beat, so the freshly dated asset is resolved from here rather
+    // than from a month listing that may not include it yet.
+    func getAsset(assetID: String) async throws -> Asset {
+        try await getJSON(path: "/api/assets/\(pathSegment(assetID))")
+    }
+
     // force=true bypasses the trash and deletes irreversibly. Not used by the
     // extension (delete = trash); kept for callers that need a hard delete.
     func deleteAssetsPermanently(assetIDs: [String]) async throws {
