@@ -139,6 +139,14 @@ func monthDisplayName(_ yearMonth: String) -> String {
     return String(yearMonth.suffix(2))
 }
 
+// Noon on the first of a "YYYY-MM" month, as an ISO 8601 instant. Used to date an
+// uploaded asset into the Timeline month it was dropped into. Noon, not midnight,
+// so the asset stays inside the month for every real timezone once Immich derives
+// its local date from this instant.
+func timelineMonthDate(_ yearMonth: String) -> String {
+    "\(yearMonth)-01T12:00:00.000Z"
+}
+
 func nameCounts(_ names: [String]) -> [String: Int] {
     var counts: [String: Int] = [:]
     for name in names {
@@ -425,7 +433,9 @@ final class MonthItem: NSObject, NSFileProviderItem {
     }
 
     var contentType: UTType { .folder }
-    var capabilities: NSFileProviderItemCapabilities { [.allowsContentEnumerating, .allowsReading] }
+    // A dropped file uploads to the library and is dated into this month (Immich's
+    // record only, never the file's EXIF), so a Timeline month accepts new items.
+    var capabilities: NSFileProviderItemCapabilities { [.allowsContentEnumerating, .allowsReading, .allowsAddingSubItems] }
     var itemVersion: NSFileProviderItemVersion {
         let version = Data("month:\(yearMonth):named".utf8)
         return NSFileProviderItemVersion(contentVersion: version, metadataVersion: version)
