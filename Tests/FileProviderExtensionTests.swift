@@ -131,6 +131,44 @@ final class FileProviderExtensionTests: XCTestCase {
         XCTAssertEqual(outcome.filename, "f.jpg")
     }
 
+    func testUploadIntoTimelineMonthDatesItAndSkipsAlbums() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).png")
+        try Data([0x1, 0x2, 0x3]).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let log = RequestLog()
+        let client = MockClient.make { req in
+            log.record(req)
+            switch (req.url?.path ?? "", req.httpMethod ?? "GET") {
+            case ("/api/assets", "POST"):
+                return MockClient.data(#"{"id":"x","status":"created"}"#)
+            case (let p, "GET") where p.hasPrefix("/api/assets/"):
+                return MockClient.data(Fixtures.assetJSON())
+            case ("/api/search/metadata", _):
+                return MockClient.data("{\"assets\":{\"items\":[\(Fixtures.assetJSON())],\"nextPage\":null}}")
+            default:
+                return (200, Data("{}".utf8))
+            }
+        }
+        let ext = FileProviderExtension(domain: domain, client: client, cache: ImmichCache(client: client))
+        let template = TemplateItem(parent: "month:2024-03", filename: "f.jpg", contentType: .jpeg)
+        let outcome = await create(ext, template: template, contents: url)
+
+        XCTAssertTrue(outcome.ok, "upload errored: \(outcome.error ?? "")")
+        XCTAssertEqual(outcome.filename, "f.jpg", "the resolved filename proves upload -> date -> refetch -> resolve ran")
+        XCTAssertTrue(log.contains("POST /api/assets"), "the file should be uploaded")
+        XCTAssertTrue(log.requests.contains { $0.httpMethod == "PUT" && $0.url?.path == "/api/assets/x" },
+                      "the asset should be dated into the dropped month via updateAsset")
+        XCTAssertFalse(log.requests.contains { ($0.url?.path.hasPrefix("/api/albums/") ?? false) && ($0.url?.path.hasSuffix("/assets") ?? false) },
+                       "a library upload must not add the asset to any album")
+    }
+
+    func testTimelineMonthDateIsNoonOnTheFirst() {
+        // Noon, not midnight, so a negative-offset timezone can't push it into the
+        // previous month once Immich derives the local date from this instant.
+        XCTAssertEqual(timelineMonthDate("2024-03"), "2024-03-01T12:00:00.000Z")
+    }
+
     // MARK: modifyItem
 
     private func modify(_ ext: FileProviderExtension, item: NSFileProviderItem, fields: NSFileProviderItemFields) async -> Outcome {
