@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://findich.app"),
   title: "Findich — Mount your Immich library in the macOS Finder",
   description:
-    "Mount your self-hosted Immich library in the macOS Finder. Albums, timeline, people and places become native folders, streamed on demand with drag-and-drop upload. Open source, pay what you want.",
+    "Mount your self-hosted Immich library in the macOS Finder — albums, timeline, people and places as native folders. Open source, pay what you want.",
   alternates: { canonical: "/" },
   keywords: [
     "Immich",
