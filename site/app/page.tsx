@@ -166,7 +166,16 @@ const jsonLd = {
         name: "Quub",
         url: "https://quub.tech",
       },
-      sameAs: [GITHUB],
+      sameAs: [GITHUB, GUMROAD],
+      subjectOf: {
+        "@type": "Article",
+        headline:
+          "I mounted my Immich library in Finder, and now I never open the web app",
+        url: "https://www.xda-developers.com/mounted-immich-library-in-finder-never-open-the-web-app/",
+        author: { "@type": "Person", name: "Dhruv Bhutani" },
+        publisher: { "@type": "Organization", name: "XDA Developers" },
+        datePublished: "2026-07-16",
+      },
     },
     {
       "@type": "FAQPage",
@@ -212,7 +221,7 @@ export default function Home() {
           Pay what you want · Open source · macOS 13+
         </p>
         <h1 className="mx-auto max-w-3xl text-balance text-4xl font-semibold leading-[1.08] tracking-tight sm:text-6xl">
-          Your photo library has a place in the Finder.
+          Your Immich library, mounted in the Finder.
         </h1>
         <p className="mx-auto mt-6 max-w-xl text-pretty text-[17px] leading-relaxed text-fog">
           Findich mounts your self-hosted{" "}
