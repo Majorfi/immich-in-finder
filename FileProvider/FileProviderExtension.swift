@@ -596,7 +596,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     let asset = try await client.getAsset(assetID: result.ID)
                     var siblings = (try? await cache.assets(for: .month(yearMonth: yearMonth))) ?? []
                     if siblings.contains(where: { $0.assetID == asset.assetID }) == false {
-                        siblings.append(asset)
+                        insertByFileCreatedAt(asset, into: &siblings)
                     }
                     guard let resolved = resolveAsset(result.ID, in: siblings) else {
                         completionHandler(nil, [], false, Self.error(.noSuchItem))

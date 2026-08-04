@@ -169,6 +169,29 @@ final class FileProviderExtensionTests: XCTestCase {
         XCTAssertEqual(timelineMonthDate("2024-03"), "2024-03-01T12:00:00.000Z")
     }
 
+    func testInsertByFileCreatedAtPlacesAssetByDateNotAtTheTail() {
+        func asset(_ id: String, _ date: String) -> Asset {
+            Asset(assetID: id, type: .image, originalFileName: "\(id).jpg", originalPath: nil, checksum: nil,
+                  fileCreatedAt: date, fileModifiedAt: nil, exifInfo: nil)
+        }
+        // fileCreatedAt-ascending, as the order:.asc month enumeration returns it.
+        var siblings = [asset("a", "2024-03-05T00:00:00.000Z"), asset("c", "2024-03-20T00:00:00.000Z")]
+        // A photo dated into the middle of the month must land between a and c so its
+        // chunk parent is derived from its date, not forced to the last chunk.
+        insertByFileCreatedAt(asset("b", "2024-03-12T00:00:00.000Z"), into: &siblings)
+        XCTAssertEqual(siblings.map { $0.assetID }, ["a", "b", "c"])
+    }
+
+    func testInsertByFileCreatedAtFallsBackToTailWhenDateUnparseable() {
+        func asset(_ id: String, _ date: String) -> Asset {
+            Asset(assetID: id, type: .image, originalFileName: "\(id).jpg", originalPath: nil, checksum: nil,
+                  fileCreatedAt: date, fileModifiedAt: nil, exifInfo: nil)
+        }
+        var siblings = [asset("a", "2024-03-05T00:00:00.000Z")]
+        insertByFileCreatedAt(asset("b", "not-a-date"), into: &siblings)
+        XCTAssertEqual(siblings.map { $0.assetID }, ["a", "b"])
+    }
+
     // MARK: modifyItem
 
     private func modify(_ ext: FileProviderExtension, item: NSFileProviderItem, fields: NSFileProviderItemFields) async -> Outcome {

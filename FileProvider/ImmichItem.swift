@@ -147,6 +147,25 @@ func timelineMonthDate(_ yearMonth: String) -> String {
     "\(yearMonth)-01T12:00:00.000Z"
 }
 
+// Inserts an asset into a fileCreatedAt-ascending list at the slot the order:.asc
+// month enumeration would give it. A freshly dated upload can still be missing from
+// the (index-lagged) month listing, so its chunk parent must be derived from where
+// its date places it, not from the tail an append would imply. Falls back to the
+// tail when a date can't be parsed, so ordering never breaks resolution.
+func insertByFileCreatedAt(_ asset: Asset, into assets: inout [Asset]) {
+    guard let date = ImmichItem.parseDate(asset.fileCreatedAt) else {
+        assets.append(asset)
+        return
+    }
+    let index = assets.firstIndex { sibling in
+        guard let siblingDate = ImmichItem.parseDate(sibling.fileCreatedAt) else {
+            return false
+        }
+        return siblingDate > date
+    } ?? assets.endIndex
+    assets.insert(asset, at: index)
+}
+
 func nameCounts(_ names: [String]) -> [String: Int] {
     var counts: [String: Int] = [:]
     for name in names {
