@@ -93,6 +93,7 @@ Read (browsing, thumbnails, downloads):
 Write (drag-in, rename, move, delete):
 
 - `asset.upload`: drop a file in to upload it
+- `asset.update`: date an uploaded photo when it is dropped into a Timeline month
 - `asset.delete`: delete to trash
 - `album.create`: create an album (a new folder under Albums)
 - `album.update`: rename an album
@@ -158,6 +159,7 @@ The extension's `Info.plist` **must** include `NSExtensionFileProviderDocumentGr
 - [x] Swift 6 strict-concurrency hardening of the extension
 - [x] Write support, phase 1: upload into albums, create albums, delete to trash
 - [x] Write support, phase 2: rename albums, move assets between albums
+- [x] Upload into the library by dropping into a Timeline month (dates the asset to that month)
 - [x] Refresh the affected container after a local write (`signalEnumerator`)
 - [x] Settings toggle to choose which top-level folders show in Finder
 - [x] `People/` view: named people as folders (facial recognition)

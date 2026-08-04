@@ -174,6 +174,13 @@ struct UpdateAlbumRequest: Encodable, Sendable {
     let albumName: String
 }
 
+// PUT /api/assets/{id}: sets Immich's record for the asset. Only the capture date
+// is sent, to file an uploaded asset under a chosen Timeline month. This changes
+// Immich's metadata, not the file's embedded EXIF.
+struct UpdateAssetRequest: Encodable, Sendable {
+    let dateTimeOriginal: String
+}
+
 // force=false moves assets to the Immich trash (recoverable for 30 days)
 // rather than deleting them permanently.
 struct TrashRequest: Encodable, Sendable {

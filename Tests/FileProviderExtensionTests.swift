@@ -131,6 +131,92 @@ final class FileProviderExtensionTests: XCTestCase {
         XCTAssertEqual(outcome.filename, "f.jpg")
     }
 
+    func testUploadIntoTimelineMonthDatesItAndSkipsAlbums() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).png")
+        try Data([0x1, 0x2, 0x3]).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let log = RequestLog()
+        let client = MockClient.make { req in
+            log.record(req)
+            switch (req.url?.path ?? "", req.httpMethod ?? "GET") {
+            case ("/api/assets", "POST"):
+                return MockClient.data(#"{"id":"x","status":"created"}"#)
+            case (let p, "GET") where p.hasPrefix("/api/assets/"):
+                return MockClient.data(Fixtures.assetJSON())
+            case ("/api/search/metadata", _):
+                return MockClient.data("{\"assets\":{\"items\":[\(Fixtures.assetJSON())],\"nextPage\":null}}")
+            default:
+                return (200, Data("{}".utf8))
+            }
+        }
+        let ext = FileProviderExtension(domain: domain, client: client, cache: ImmichCache(client: client))
+        let template = TemplateItem(parent: "month:2024-03", filename: "f.jpg", contentType: .jpeg)
+        let outcome = await create(ext, template: template, contents: url)
+
+        XCTAssertTrue(outcome.ok, "upload errored: \(outcome.error ?? "")")
+        XCTAssertEqual(outcome.filename, "f.jpg", "the resolved filename proves upload -> date -> refetch -> resolve ran")
+        XCTAssertTrue(log.contains("POST /api/assets"), "the file should be uploaded")
+        XCTAssertTrue(log.requests.contains { $0.httpMethod == "PUT" && $0.url?.path == "/api/assets/x" },
+                      "the asset should be dated into the dropped month via updateAsset")
+        XCTAssertFalse(log.requests.contains { ($0.url?.path.hasPrefix("/api/albums/") ?? false) && ($0.url?.path.hasSuffix("/assets") ?? false) },
+                       "a library upload must not add the asset to any album")
+    }
+
+    func testDuplicateTimelineDropIsRefusedWithoutReDating() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).png")
+        try Data([0x1, 0x2, 0x3]).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let log = RequestLog()
+        let client = MockClient.make { req in
+            log.record(req)
+            switch (req.url?.path ?? "", req.httpMethod ?? "GET") {
+            case ("/api/assets", "POST"):
+                return MockClient.data(#"{"id":"x","status":"duplicate"}"#)
+            default:
+                return (200, Data("{}".utf8))
+            }
+        }
+        let ext = FileProviderExtension(domain: domain, client: client, cache: ImmichCache(client: client))
+        let template = TemplateItem(parent: "month:2024-03", filename: "f.jpg", contentType: .jpeg)
+        let outcome = await create(ext, template: template, contents: url)
+
+        XCTAssertFalse(outcome.ok, "a duplicate drop must be refused, not silently succeed")
+        XCTAssertNil(outcome.filename)
+        XCTAssertFalse(log.requests.contains { $0.httpMethod == "PUT" && ($0.url?.path.hasPrefix("/api/assets/") ?? false) },
+                       "a duplicate must never re-date the user's existing asset")
+    }
+
+    func testTimelineMonthDateIsNoonOnTheFirst() {
+        // Noon, not midnight, so a negative-offset timezone can't push it into the
+        // previous month once Immich derives the local date from this instant.
+        XCTAssertEqual(timelineMonthDate("2024-03"), "2024-03-01T12:00:00.000Z")
+    }
+
+    func testInsertByFileCreatedAtPlacesAssetByDateNotAtTheTail() {
+        func asset(_ id: String, _ date: String) -> Asset {
+            Asset(assetID: id, type: .image, originalFileName: "\(id).jpg", originalPath: nil, checksum: nil,
+                  fileCreatedAt: date, fileModifiedAt: nil, exifInfo: nil)
+        }
+        // fileCreatedAt-ascending, as the order:.asc month enumeration returns it.
+        var siblings = [asset("a", "2024-03-05T00:00:00.000Z"), asset("c", "2024-03-20T00:00:00.000Z")]
+        // A photo dated into the middle of the month must land between a and c so its
+        // chunk parent is derived from its date, not forced to the last chunk.
+        insertByFileCreatedAt(asset("b", "2024-03-12T00:00:00.000Z"), into: &siblings)
+        XCTAssertEqual(siblings.map { $0.assetID }, ["a", "b", "c"])
+    }
+
+    func testInsertByFileCreatedAtFallsBackToTailWhenDateUnparseable() {
+        func asset(_ id: String, _ date: String) -> Asset {
+            Asset(assetID: id, type: .image, originalFileName: "\(id).jpg", originalPath: nil, checksum: nil,
+                  fileCreatedAt: date, fileModifiedAt: nil, exifInfo: nil)
+        }
+        var siblings = [asset("a", "2024-03-05T00:00:00.000Z")]
+        insertByFileCreatedAt(asset("b", "not-a-date"), into: &siblings)
+        XCTAssertEqual(siblings.map { $0.assetID }, ["a", "b"])
+    }
+
     // MARK: modifyItem
 
     private func modify(_ ext: FileProviderExtension, item: NSFileProviderItem, fields: NSFileProviderItemFields) async -> Outcome {

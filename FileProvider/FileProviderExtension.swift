@@ -577,6 +577,55 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
             return progress
         }
 
+        if case .month(let yearMonth) = parent, let url {
+            let createdAt = Self.isoString(itemTemplate.creationDate ?? nil)
+            let modifiedAt = Self.isoString(itemTemplate.contentModificationDate ?? nil)
+            Task {
+                do {
+                    let result = try await client.uploadAsset(filename: filename, fileURL: url, createdAt: createdAt, modifiedAt: modifiedAt)
+                    // A duplicate upload returns an existing library asset, not a new
+                    // one. Dating it into the dropped month would silently move the
+                    // user's existing photo, so refuse the drop rather than mutate an
+                    // asset they never meant to touch (unlike an album drop, which only
+                    // adds a non-destructive membership).
+                    guard result.isDuplicate == false else {
+                        fileProviderLog.log("timeline drop refused: duplicate of \(result.ID, privacy: .public) → \(yearMonth, privacy: .public)")
+                        completionHandler(nil, [], false, Self.duplicateError())
+                        progress.completedUnitCount = 1
+                        return
+                    }
+                    // The drop target is an explicit month, so date the asset into it
+                    // on Immich (its record only, never the file's EXIF); an upload
+                    // otherwise files under its own capture date, not where it landed.
+                    try await client.updateAsset(assetID: result.ID, dateTimeOriginal: timelineMonthDate(yearMonth))
+                    await cache.invalidate(.month(yearMonth: yearMonth))
+                    await cache.invalidateTimeline()
+                    fileProviderLog.log("uploaded \(result.ID, privacy: .public) (duplicate: \(result.isDuplicate, privacy: .public)) → timeline \(yearMonth, privacy: .public)")
+                    // The asset row updates at once, but the month search index can
+                    // lag a beat, so resolve the freshly dated asset from a direct
+                    // fetch and use the month listing only to disambiguate its name.
+                    let asset = try await client.getAsset(assetID: result.ID)
+                    var siblings = (try? await cache.assets(for: .month(yearMonth: yearMonth))) ?? []
+                    if siblings.contains(where: { $0.assetID == asset.assetID }) == false {
+                        insertByFileCreatedAt(asset, into: &siblings)
+                    }
+                    guard let resolved = resolveAsset(result.ID, in: siblings) else {
+                        completionHandler(nil, [], false, Self.error(.noSuchItem))
+                        progress.completedUnitCount = 1
+                        return
+                    }
+                    let itemParent = await Self.assetParent(for: .month(yearMonth: yearMonth), asset: resolved.asset, in: siblings, cache: cache)
+                    completionHandler(ImmichItem(asset: resolved.asset, location: .month(yearMonth: yearMonth), filename: resolved.filename, parent: itemParent), [], false, nil)
+                    Self.signalChange(domain: domain, container: ItemID.month(yearMonth).identifier)
+                } catch {
+                    fileProviderLog.error("timeline upload failed for \(filename, privacy: .private): \(error.localizedDescription, privacy: .public)")
+                    completionHandler(nil, [], false, fileProviderError(from: error))
+                }
+                progress.completedUnitCount = 1
+            }
+            return progress
+        }
+
         guard case .album(let albumID) = parent, let url else {
             completionHandler(nil, [], false, Self.readOnlyError())
             return progress
@@ -776,6 +825,12 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
 
     private static func readOnlyError() -> NSError {
         NSError(domain: NSCocoaErrorDomain, code: NSFeatureUnsupportedError)
+    }
+
+    // A dropped file already exists in the library (deduped by checksum). Reported
+    // as "file exists" so Finder tells the user the drop was refused, not lost.
+    private static func duplicateError() -> NSError {
+        NSError(domain: NSCocoaErrorDomain, code: NSFileWriteFileExistsError)
     }
 
     private static func writeTemporary(data: Data, filename: String) throws -> URL {
