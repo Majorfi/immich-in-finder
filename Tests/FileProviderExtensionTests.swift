@@ -163,6 +163,31 @@ final class FileProviderExtensionTests: XCTestCase {
                        "a library upload must not add the asset to any album")
     }
 
+    func testDuplicateTimelineDropIsRefusedWithoutReDating() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).png")
+        try Data([0x1, 0x2, 0x3]).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let log = RequestLog()
+        let client = MockClient.make { req in
+            log.record(req)
+            switch (req.url?.path ?? "", req.httpMethod ?? "GET") {
+            case ("/api/assets", "POST"):
+                return MockClient.data(#"{"id":"x","status":"duplicate"}"#)
+            default:
+                return (200, Data("{}".utf8))
+            }
+        }
+        let ext = FileProviderExtension(domain: domain, client: client, cache: ImmichCache(client: client))
+        let template = TemplateItem(parent: "month:2024-03", filename: "f.jpg", contentType: .jpeg)
+        let outcome = await create(ext, template: template, contents: url)
+
+        XCTAssertFalse(outcome.ok, "a duplicate drop must be refused, not silently succeed")
+        XCTAssertNil(outcome.filename)
+        XCTAssertFalse(log.requests.contains { $0.httpMethod == "PUT" && ($0.url?.path.hasPrefix("/api/assets/") ?? false) },
+                       "a duplicate must never re-date the user's existing asset")
+    }
+
     func testTimelineMonthDateIsNoonOnTheFirst() {
         // Noon, not midnight, so a negative-offset timezone can't push it into the
         // previous month once Immich derives the local date from this instant.

@@ -583,6 +583,17 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
             Task {
                 do {
                     let result = try await client.uploadAsset(filename: filename, fileURL: url, createdAt: createdAt, modifiedAt: modifiedAt)
+                    // A duplicate upload returns an existing library asset, not a new
+                    // one. Dating it into the dropped month would silently move the
+                    // user's existing photo, so refuse the drop rather than mutate an
+                    // asset they never meant to touch (unlike an album drop, which only
+                    // adds a non-destructive membership).
+                    guard result.isDuplicate == false else {
+                        fileProviderLog.log("timeline drop refused: duplicate of \(result.ID, privacy: .public) → \(yearMonth, privacy: .public)")
+                        completionHandler(nil, [], false, Self.duplicateError())
+                        progress.completedUnitCount = 1
+                        return
+                    }
                     // The drop target is an explicit month, so date the asset into it
                     // on Immich (its record only, never the file's EXIF); an upload
                     // otherwise files under its own capture date, not where it landed.
@@ -814,6 +825,12 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
 
     private static func readOnlyError() -> NSError {
         NSError(domain: NSCocoaErrorDomain, code: NSFeatureUnsupportedError)
+    }
+
+    // A dropped file already exists in the library (deduped by checksum). Reported
+    // as "file exists" so Finder tells the user the drop was refused, not lost.
+    private static func duplicateError() -> NSError {
+        NSError(domain: NSCocoaErrorDomain, code: NSFileWriteFileExistsError)
     }
 
     private static func writeTemporary(data: Data, filename: String) throws -> URL {
