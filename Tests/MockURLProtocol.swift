@@ -94,6 +94,7 @@ extension MockClient {
                 return data(#"[{"id":"t","name":"Trip","value":"Trip"}]"#)
             default:
                 if path.hasSuffix("/original") || path.hasSuffix("/thumbnail") { return (200, Data([0xFF, 0xD8])) }
+                if method == "GET" && path.hasPrefix("/api/assets/") { return data(asset) }
                 if writes && path.hasPrefix("/api/albums/") && method == "PATCH" { return data(#"{"id":"a","albumName":"Renamed","assetCount":0}"#) }
                 if writes { return (200, Data("".utf8)) }
                 return data("{}")

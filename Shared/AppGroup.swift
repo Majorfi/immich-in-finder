@@ -34,6 +34,6 @@ enum AppGroup {
     }
 
     static func bumpRefreshGeneration() {
-        defaults?.set(refreshGeneration + 1, forKey: DefaultsKey.refreshGeneration)
+        defaults?.set(refreshGeneration &+ 1, forKey: DefaultsKey.refreshGeneration)
     }
 }
