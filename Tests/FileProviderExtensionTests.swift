@@ -160,6 +160,31 @@ final class FileProviderExtensionTests: XCTestCase {
         XCTAssertEqual(outcome.filename, "f.jpg", "the asset is resolved via getAsset + insert, not the empty search")
     }
 
+    func testAlbumUploadReportsAlbumSearchError() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).png")
+        try Data([0x1, 0x2, 0x3]).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let client = MockClient.make { req in
+            switch (req.url?.path ?? "", req.httpMethod ?? "GET") {
+            case ("/api/assets", "POST"):
+                return MockClient.data(#"{"id":"x","status":"created"}"#)
+            case (let p, "GET") where p.hasPrefix("/api/assets/"):
+                return MockClient.data(Fixtures.assetJSON())
+            case ("/api/search/metadata", _):
+                return (500, Data("{}".utf8))
+            default:
+                return (200, Data("{}".utf8))
+            }
+        }
+        let ext = FileProviderExtension(domain: domain, client: client, cache: ImmichCache(client: client))
+        let template = TemplateItem(parent: "album:a", filename: "f.jpg", contentType: .jpeg)
+        let outcome = await create(ext, template: template, contents: url)
+
+        XCTAssertFalse(outcome.ok)
+        XCTAssertNil(outcome.filename)
+    }
+
     func testUploadIntoTimelineMonthDatesItAndSkipsAlbums() async throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).png")
         try Data([0x1, 0x2, 0x3]).write(to: url)

@@ -650,7 +650,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 // would fail within that window and strand the drop as a failed
                 // create (Finder shows it "waiting to upload" forever).
                 let asset = try await client.getAsset(assetID: result.ID)
-                var siblings = (try? await cache.assets(for: .album(id: albumID))) ?? []
+                var siblings = try await cache.assets(for: .album(id: albumID))
                 if siblings.contains(where: { $0.assetID == asset.assetID }) == false {
                     insertByFileCreatedAt(asset, into: &siblings)
                 }
