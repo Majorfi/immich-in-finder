@@ -293,7 +293,7 @@ struct ContentView: View {
             } else {
                 try await DomainManager.register()
             }
-            DomainManager.reloadRoot()
+            DomainManager.requestRefresh()
             isEnabled = true
             status = .success("Enabled. Find “Findich” in your Finder sidebar (\(albumCount) albums).")
         } catch {

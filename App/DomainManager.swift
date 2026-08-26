@@ -28,9 +28,12 @@ enum DomainManager {
         try await NSFileProviderManager.remove(domain)
     }
 
-    // Ask Finder to re-enumerate the root so a change to the visible sections
-    // takes effect without re-mounting the domain.
-    static func reloadRoot() {
+    // Ask the running extension to drop its cached fetches, then re-enumerate the
+    // root. Bumping the shared generation is what reaches the extension process
+    // (signalEnumerator alone would re-serve its stale in-memory cache), so a
+    // manual "Update" picks up server-side changes without re-mounting the domain.
+    static func requestRefresh() {
+        AppGroup.bumpRefreshGeneration()
         NSFileProviderManager(for: domain)?.signalEnumerator(for: .rootContainer) { _ in }
     }
 

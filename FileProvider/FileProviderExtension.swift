@@ -643,7 +643,17 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 // filename is disambiguated and its content version (checksum)
                 // matches enumeration, avoiding a ghost entry and an immediate
                 // redundant re-download of the file we just uploaded.
-                let siblings = try await cache.assets(for: .album(id: albumID))
+                //
+                // The album membership search index can lag a beat behind the add,
+                // so resolve the asset from a direct fetch and use the album listing
+                // only to disambiguate its name; resolving through the search alone
+                // would fail within that window and strand the drop as a failed
+                // create (Finder shows it "waiting to upload" forever).
+                let asset = try await client.getAsset(assetID: result.ID)
+                var siblings = (try? await cache.assets(for: .album(id: albumID))) ?? []
+                if siblings.contains(where: { $0.assetID == asset.assetID }) == false {
+                    insertByFileCreatedAt(asset, into: &siblings)
+                }
                 guard let resolved = resolveAsset(result.ID, in: siblings) else {
                     completionHandler(nil, [], false, Self.error(.noSuchItem))
                     progress.completedUnitCount = 1
