@@ -95,6 +95,36 @@ final class ImmichCacheTests: XCTestCase {
         XCTAssertEqual(t1.map(\.tagID), ["t"])
     }
 
+    // A bumped refresh generation must flush the cache so the next read refetches
+    // from the server. This is the app -> extension "Update" channel: the app bumps
+    // the shared counter, and refreshIfNeeded (run at the top of each enumeration)
+    // observes the change and drops the memoized fetches.
+    func testRefreshGenerationBumpFlushesCache() async throws {
+        let original = AppGroup.refreshGeneration
+        defer { AppGroup.defaults?.set(original, forKey: AppGroup.DefaultsKey.refreshGeneration) }
+        let calls = AtomicInt()
+        let cache = ImmichCache(client: countingClient(calls, json: "[]"))
+        _ = try await cache.albumList()
+        AppGroup.bumpRefreshGeneration()
+        await cache.refreshIfNeeded()
+        _ = try await cache.albumList()
+        XCTAssertEqual(calls.count, 2, "a generation bump must drop the memoized fetch")
+    }
+
+    // Without a bump (and within the TTL) refreshIfNeeded must be a no-op, so a
+    // steady enumeration loop keeps serving cached data instead of re-hitting the
+    // server on every pass.
+    func testRefreshWithoutBumpKeepsCache() async throws {
+        let original = AppGroup.refreshGeneration
+        defer { AppGroup.defaults?.set(original, forKey: AppGroup.DefaultsKey.refreshGeneration) }
+        let calls = AtomicInt()
+        let cache = ImmichCache(client: countingClient(calls, json: "[]"))
+        _ = try await cache.albumList()
+        await cache.refreshIfNeeded()
+        _ = try await cache.albumList()
+        XCTAssertEqual(calls.count, 1, "an unchanged generation must not reflush")
+    }
+
     // A failed bucket fetch must not be memoized: timelineYears evicts on error
     // so the next pass retries instead of leaving the Timeline stuck empty.
     func testTimelineYearsNotCachedOnError() async throws {
