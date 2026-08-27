@@ -15,8 +15,43 @@ actor ImmichCache {
     private var timelineYearsTask: Task<[Int], Error>?
     private var timelineMonthsTasks: [String: Task<[String], Never>] = [:]
 
+    // Freshness bookkeeping. lastSeenGeneration tracks the app's "Update" clicks
+    // (bumped in the shared App Group defaults); stampedAt marks when the current
+    // cached data was last flushed, for the TTL sweep.
+    private var lastSeenGeneration = AppGroup.refreshGeneration
+    private var stampedAt = Date()
+    private static let ttl: TimeInterval = 60
+
     init(client: ImmichClient) {
         self.client = client
+    }
+
+    // Called at the top of every enumeration. Drops all memoized fetches when the
+    // app requested a refresh, or when the data has aged past the TTL, so the next
+    // read re-hits the server. The flush is coarse (whole cache) on purpose: it
+    // only triggers on-demand refetches, so per-container precision buys nothing.
+    func refreshIfNeeded() {
+        let generation = AppGroup.refreshGeneration
+        if generation != lastSeenGeneration {
+            lastSeenGeneration = generation
+            flushAll()
+            return
+        }
+        if Date().timeIntervalSince(stampedAt) > Self.ttl {
+            flushAll()
+        }
+    }
+
+    private func flushAll() {
+        albumListTask = nil
+        peopleListTask = nil
+        cityListTask = nil
+        tagListTask = nil
+        assetTasks = [:]
+        assetCountTasks = [:]
+        timelineYearsTask = nil
+        timelineMonthsTasks = [:]
+        stampedAt = Date()
     }
 
     func albumList() async throws -> [AlbumSummary] {
@@ -375,6 +410,7 @@ final class ItemEnumerator: NSObject, NSFileProviderEnumerator {
         nonisolated(unsafe) let observer = observer
         Task {
             do {
+                await cache.refreshIfNeeded()
                 switch container {
                 case .sections:
                     let visible = VisibleSections.load()

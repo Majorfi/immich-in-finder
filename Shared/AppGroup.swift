@@ -19,9 +19,21 @@ enum AppGroup {
         static let chunkSize = "immich.chunkSize"
         static let chunkStrategy = "immich.chunkStrategy"
         static let filenameSource = "immich.filenameSource"
+        static let refreshGeneration = "immich.refreshGeneration"
     }
 
     static var defaults: UserDefaults? {
         UserDefaults(suiteName: identifier)
+    }
+
+    // Bumped by the app on "Update" and read by the running extension's cache to
+    // flush itself, so a manual refresh reaches a process the app can't otherwise
+    // signal to drop its memoized fetches.
+    static var refreshGeneration: Int {
+        defaults?.integer(forKey: DefaultsKey.refreshGeneration) ?? 0
+    }
+
+    static func bumpRefreshGeneration() {
+        defaults?.set(refreshGeneration &+ 1, forKey: DefaultsKey.refreshGeneration)
     }
 }
