@@ -43,14 +43,6 @@ actor ImmichCache {
     }
 
     private func flushAll() {
-        albumListTask?.cancel()
-        peopleListTask?.cancel()
-        cityListTask?.cancel()
-        tagListTask?.cancel()
-        assetTasks.values.forEach { $0.cancel() }
-        assetCountTasks.values.forEach { $0.cancel() }
-        timelineYearsTask?.cancel()
-        timelineMonthsTasks.values.forEach { $0.cancel() }
         albumListTask = nil
         peopleListTask = nil
         cityListTask = nil
@@ -194,20 +186,15 @@ actor ImmichCache {
     // Write operations drop the memoized fetch for the affected container so the
     // next enumeration re-reads it from the server instead of stale data.
     func invalidateAlbumList() {
-        albumListTask?.cancel()
         albumListTask = nil
     }
 
     func invalidate(_ location: AssetLocation) {
-        assetTasks[location.cacheKey]?.cancel()
-        assetCountTasks[location.cacheKey]?.cancel()
         assetTasks[location.cacheKey] = nil
         assetCountTasks[location.cacheKey] = nil
     }
 
     func invalidateTimeline() {
-        timelineYearsTask?.cancel()
-        timelineMonthsTasks.values.forEach { $0.cancel() }
         timelineYearsTask = nil
         timelineMonthsTasks = [:]
     }
